@@ -1070,7 +1070,7 @@ void mTxmq_core(bool is_trans, long dimi, long dimj, long dimk,
 void mTxmq(long dimi, long dimj, long dimk,
            double * __restrict__ c, const double * __restrict__ a, const double * __restrict__ b) {
 
-	if(dimj % 24 < dimi % 24){
+	if((dimj-1) % 24 >= (dimi-1) % 24){
 		mTxmq_core(false, dimi, dimj, dimk, c, a, b);
 	}else{
 		mTxmq_core(true, dimj, dimi, dimk, c, b, a);
