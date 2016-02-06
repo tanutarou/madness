@@ -207,18 +207,18 @@ void mTxmq_core(bool is_trans, long dimi, long dimj, long dimk,
                     ci1j5 = FMA(aki1, bkj, ci1j5);
                 }
 				if(!is_trans){
-					_mm256_storeu_pd(c+i*dimj   , ci0j0);
-					_mm256_storeu_pd(c+i*dimj+ 4, ci0j1);
-					_mm256_storeu_pd(c+i*dimj+ 8, ci0j2);
-					_mm256_storeu_pd(c+i*dimj+12, ci0j3);
-					_mm256_storeu_pd(c+i*dimj+16, ci0j4);
+					_mm256_store_pd(c+i*dimj   , ci0j0);
+					_mm256_store_pd(c+i*dimj+ 4, ci0j1);
+					_mm256_store_pd(c+i*dimj+ 8, ci0j2);
+					_mm256_store_pd(c+i*dimj+12, ci0j3);
+					_mm256_store_pd(c+i*dimj+16, ci0j4);
 					_mm256_maskstore_pd(c+i*dimj+20, mask, ci0j5);
 					
-					_mm256_storeu_pd(c+(i+1)*dimj   , ci1j0);
-					_mm256_storeu_pd(c+(i+1)*dimj+ 4, ci1j1);
-					_mm256_storeu_pd(c+(i+1)*dimj+ 8, ci1j2);
-					_mm256_storeu_pd(c+(i+1)*dimj+12, ci1j3);
-					_mm256_storeu_pd(c+(i+1)*dimj+16, ci1j4);
+					_mm256_store_pd(c+(i+1)*dimj   , ci1j0);
+					_mm256_store_pd(c+(i+1)*dimj+ 4, ci1j1);
+					_mm256_store_pd(c+(i+1)*dimj+ 8, ci1j2);
+					_mm256_store_pd(c+(i+1)*dimj+12, ci1j3);
+					_mm256_store_pd(c+(i+1)*dimj+16, ci1j4);
 					_mm256_maskstore_pd(c+(i+1)*dimj+20, mask, ci1j5);
 				}else{
 					//temporary use aki0, aki1 and mask
@@ -310,44 +310,44 @@ void mTxmq_core(bool is_trans, long dimi, long dimj, long dimk,
                     ci0j5 = FMA(aki0, bkj, ci0j5);
                 }
 				if(!is_trans){
-					_mm256_storeu_pd(c+i*dimj   , ci0j0);
-					_mm256_storeu_pd(c+i*dimj+ 4, ci0j1);
-					_mm256_storeu_pd(c+i*dimj+ 8, ci0j2);
-					_mm256_storeu_pd(c+i*dimj+12, ci0j3);
-					_mm256_storeu_pd(c+i*dimj+16, ci0j4);
+					_mm256_store_pd(c+i*dimj   , ci0j0);
+					_mm256_store_pd(c+i*dimj+ 4, ci0j1);
+					_mm256_store_pd(c+i*dimj+ 8, ci0j2);
+					_mm256_store_pd(c+i*dimj+12, ci0j3);
+					_mm256_store_pd(c+i*dimj+16, ci0j4);
 					_mm256_maskstore_pd(c+i*dimj+20, mask, ci0j5);
 				}else{
-					_mm256_storeu_pd(tmp, ci0j0);
+					_mm256_store_pd(tmp, ci0j0);
 					c[0 *dimi+i] = tmp[0];
 					c[1 *dimi+i] = tmp[1];
 					c[2 *dimi+i] = tmp[2];
 					c[3 *dimi+i] = tmp[3];
 
-					_mm256_storeu_pd(tmp, ci0j1);
+					_mm256_store_pd(tmp, ci0j1);
 					c[4 *dimi+i] = tmp[0];
 					c[5 *dimi+i] = tmp[1];
 					c[6 *dimi+i] = tmp[2];
 					c[7 *dimi+i] = tmp[3];
 
-					_mm256_storeu_pd(tmp, ci0j2);
+					_mm256_store_pd(tmp, ci0j2);
 					c[8 *dimi+i] = tmp[0];
 					c[9 *dimi+i] = tmp[1];
 					c[10*dimi+i] = tmp[2];
 					c[11*dimi+i] = tmp[3];
 
-					_mm256_storeu_pd(tmp, ci0j3);
+					_mm256_store_pd(tmp, ci0j3);
 					c[12*dimi+i] = tmp[0];
 					c[13*dimi+i] = tmp[1];
 					c[14*dimi+i] = tmp[2];
 					c[15*dimi+i] = tmp[3];
 
-					_mm256_storeu_pd(tmp, ci0j4);
+					_mm256_store_pd(tmp, ci0j4);
 					c[16*dimi+i] = tmp[0];
 					c[17*dimi+i] = tmp[1];
 					c[18*dimi+i] = tmp[2];
 					c[19*dimi+i] = tmp[3];
 
-					_mm256_storeu_pd(tmp, ci0j5);
+					_mm256_store_pd(tmp, ci0j5);
 					switch(numj){
 					case 24:
 						c[23*dimi+i] = tmp[3];
@@ -412,16 +412,16 @@ void mTxmq_core(bool is_trans, long dimi, long dimj, long dimk,
                     ci1j4 = FMA(aki1, bkj, ci1j4);
                 }
 				if(!is_trans){
-					_mm256_storeu_pd(c+i*dimj   , ci0j0);
-					_mm256_storeu_pd(c+i*dimj+ 4, ci0j1);
-					_mm256_storeu_pd(c+i*dimj+ 8, ci0j2);
-					_mm256_storeu_pd(c+i*dimj+12, ci0j3);
+					_mm256_store_pd(c+i*dimj   , ci0j0);
+					_mm256_store_pd(c+i*dimj+ 4, ci0j1);
+					_mm256_store_pd(c+i*dimj+ 8, ci0j2);
+					_mm256_store_pd(c+i*dimj+12, ci0j3);
 					_mm256_maskstore_pd(c+i*dimj+16, mask, ci0j4);
 					
-					_mm256_storeu_pd(c+(i+1)*dimj   , ci1j0);
-					_mm256_storeu_pd(c+(i+1)*dimj+ 4, ci1j1);
-					_mm256_storeu_pd(c+(i+1)*dimj+ 8, ci1j2);
-					_mm256_storeu_pd(c+(i+1)*dimj+12, ci1j3);
+					_mm256_store_pd(c+(i+1)*dimj   , ci1j0);
+					_mm256_store_pd(c+(i+1)*dimj+ 4, ci1j1);
+					_mm256_store_pd(c+(i+1)*dimj+ 8, ci1j2);
+					_mm256_store_pd(c+(i+1)*dimj+12, ci1j3);
 					_mm256_maskstore_pd(c+(i+1)*dimj+16, mask, ci1j4);
 				}else{
 					//temporary use aki0, aki1 and mask
@@ -502,37 +502,37 @@ void mTxmq_core(bool is_trans, long dimi, long dimj, long dimk,
                 }
 
 				if(!is_trans){
-					_mm256_storeu_pd(c+i*dimj   , ci0j0);
-					_mm256_storeu_pd(c+i*dimj+ 4, ci0j1);
-					_mm256_storeu_pd(c+i*dimj+ 8, ci0j2);
-					_mm256_storeu_pd(c+i*dimj+12, ci0j3);
+					_mm256_store_pd(c+i*dimj   , ci0j0);
+					_mm256_store_pd(c+i*dimj+ 4, ci0j1);
+					_mm256_store_pd(c+i*dimj+ 8, ci0j2);
+					_mm256_store_pd(c+i*dimj+12, ci0j3);
 					_mm256_maskstore_pd(c+i*dimj+16, mask, ci0j4);
 				}else{
-					_mm256_storeu_pd(tmp, ci0j0);
+					_mm256_store_pd(tmp, ci0j0);
 					c[0*dimi+i] = tmp[0];
 					c[1*dimi+i] = tmp[1];
 					c[2*dimi+i] = tmp[2];
 					c[3*dimi+i] = tmp[3];
 
-					_mm256_storeu_pd(tmp, ci0j1);
+					_mm256_store_pd(tmp, ci0j1);
 					c[4*dimi+i] = tmp[0];
 					c[5*dimi+i] = tmp[1];
 					c[6*dimi+i] = tmp[2];
 					c[7*dimi+i] = tmp[3];
 
-					_mm256_storeu_pd(tmp, ci0j2);
+					_mm256_store_pd(tmp, ci0j2);
 					c[8 *dimi+i] = tmp[0];
 					c[9 *dimi+i] = tmp[1];
 					c[10*dimi+i] = tmp[2];
 					c[11*dimi+i] = tmp[3];
 
-					_mm256_storeu_pd(tmp, ci0j3);
+					_mm256_store_pd(tmp, ci0j3);
 					c[12*dimi+i] = tmp[0];
 					c[13*dimi+i] = tmp[1];
 					c[14*dimi+i] = tmp[2];
 					c[15*dimi+i] = tmp[3];
 
-					_mm256_storeu_pd(tmp, ci0j4);
+					_mm256_store_pd(tmp, ci0j4);
 					switch(numj){
 					case 20:
 						c[19*dimi+i] = tmp[3];
@@ -591,14 +591,14 @@ void mTxmq_core(bool is_trans, long dimi, long dimj, long dimk,
                     ci1j3 = FMA(aki1, bkj, ci1j3);
                 }
 				if(!is_trans){
-					_mm256_storeu_pd(c+i*dimj   , ci0j0);
-					_mm256_storeu_pd(c+i*dimj+ 4, ci0j1);
-					_mm256_storeu_pd(c+i*dimj+ 8, ci0j2);
+					_mm256_store_pd(c+i*dimj   , ci0j0);
+					_mm256_store_pd(c+i*dimj+ 4, ci0j1);
+					_mm256_store_pd(c+i*dimj+ 8, ci0j2);
 					_mm256_maskstore_pd(c+i*dimj+12, mask, ci0j3); 
 				   
-					_mm256_storeu_pd(c+(i+1)*dimj   , ci1j0);
-					_mm256_storeu_pd(c+(i+1)*dimj+ 4, ci1j1);
-					_mm256_storeu_pd(c+(i+1)*dimj+ 8, ci1j2);
+					_mm256_store_pd(c+(i+1)*dimj   , ci1j0);
+					_mm256_store_pd(c+(i+1)*dimj+ 4, ci1j1);
+					_mm256_store_pd(c+(i+1)*dimj+ 8, ci1j2);
 					_mm256_maskstore_pd(c+(i+1)*dimj+12, mask, ci1j3);
 				}else{
 					//temporary use aki0, aki1 and mask
@@ -669,30 +669,30 @@ void mTxmq_core(bool is_trans, long dimi, long dimj, long dimk,
                     ci0j3 = FMA(aki0, bkj, ci0j3);
                 }
 				if(!is_trans){
-					_mm256_storeu_pd(c+i*dimj   , ci0j0);
-					_mm256_storeu_pd(c+i*dimj+ 4, ci0j1);
-					_mm256_storeu_pd(c+i*dimj+ 8, ci0j2);
+					_mm256_store_pd(c+i*dimj   , ci0j0);
+					_mm256_store_pd(c+i*dimj+ 4, ci0j1);
+					_mm256_store_pd(c+i*dimj+ 8, ci0j2);
 					_mm256_maskstore_pd(c+i*dimj+12, mask, ci0j3); 
 				}else{
-					_mm256_storeu_pd(tmp, ci0j0);
+					_mm256_store_pd(tmp, ci0j0);
 					c[0*dimi+i] = tmp[0];
 					c[1*dimi+i] = tmp[1];
 					c[2*dimi+i] = tmp[2];
 					c[3*dimi+i] = tmp[3];
 
-					_mm256_storeu_pd(tmp, ci0j1);
+					_mm256_store_pd(tmp, ci0j1);
 					c[ 4*dimi+i] = tmp[0];
 					c[ 5*dimi+i] = tmp[1];
 					c[ 6*dimi+i] = tmp[2];
 					c[ 7*dimi+i] = tmp[3];
 
-					_mm256_storeu_pd(tmp, ci0j2);
+					_mm256_store_pd(tmp, ci0j2);
 					c[ 8*dimi+i] = tmp[0];
 					c[ 9*dimi+i] = tmp[1];
 					c[10*dimi+i] = tmp[2];
 					c[11*dimi+i] = tmp[3];
 
-					_mm256_storeu_pd(tmp, ci0j3);
+					_mm256_store_pd(tmp, ci0j3);
 					switch(numj){
 					case 16:
 						c[15*dimi+i] = tmp[3];
@@ -745,12 +745,12 @@ void mTxmq_core(bool is_trans, long dimi, long dimj, long dimk,
                     ci1j2 = FMA(aki1, bkj, ci1j2);
                 }
 				if(!is_trans){
-					_mm256_storeu_pd(c+i*dimj   , ci0j0);
-					_mm256_storeu_pd(c+i*dimj+ 4, ci0j1);
+					_mm256_store_pd(c+i*dimj   , ci0j0);
+					_mm256_store_pd(c+i*dimj+ 4, ci0j1);
 					_mm256_maskstore_pd(c+i*dimj+8, mask, ci0j2); 
 					
-					_mm256_storeu_pd(c+(i+1)*dimj   , ci1j0);
-					_mm256_storeu_pd(c+(i+1)*dimj+ 4, ci1j1);
+					_mm256_store_pd(c+(i+1)*dimj   , ci1j0);
+					_mm256_store_pd(c+(i+1)*dimj+ 4, ci1j1);
 					_mm256_maskstore_pd(c+(i+1)*dimj+8, mask, ci1j2); 
 				}else{
 					//temporary use aki0, aki1 and mask
@@ -812,23 +812,23 @@ void mTxmq_core(bool is_trans, long dimi, long dimj, long dimk,
                     ci0j2 = FMA(aki0, bkj, ci0j2);
                 }
 				if(!is_trans){
-					_mm256_storeu_pd(c+i*dimj   , ci0j0);
-					_mm256_storeu_pd(c+i*dimj+ 4, ci0j1);
+					_mm256_store_pd(c+i*dimj   , ci0j0);
+					_mm256_store_pd(c+i*dimj+ 4, ci0j1);
 					_mm256_maskstore_pd(c+i*dimj+8, mask, ci0j2); 
 				}else{
-					_mm256_storeu_pd(tmp, ci0j0);
+					_mm256_store_pd(tmp, ci0j0);
 					c[0*dimi+i] = tmp[0];
 					c[1*dimi+i] = tmp[1];
 					c[2*dimi+i] = tmp[2];
 					c[3*dimi+i] = tmp[3];
 
-					_mm256_storeu_pd(tmp, ci0j1);
+					_mm256_store_pd(tmp, ci0j1);
 					c[4*dimi+i] = tmp[0];
 					c[5*dimi+i] = tmp[1];
 					c[6*dimi+i] = tmp[2];
 					c[7*dimi+i] = tmp[3];
 
-					_mm256_storeu_pd(tmp, ci0j2);
+					_mm256_store_pd(tmp, ci0j2);
 					switch(numj){
 					case 12:
 						c[11*dimi+i] = tmp[3];
@@ -874,10 +874,10 @@ void mTxmq_core(bool is_trans, long dimi, long dimj, long dimk,
                     ci1j1 = FMA(aki1, bkj, ci1j1);
                 }
 				if(!is_trans){
-					_mm256_storeu_pd(c+i*dimj   , ci0j0);
+					_mm256_store_pd(c+i*dimj   , ci0j0);
 					_mm256_maskstore_pd(c+i*dimj+4, mask, ci0j1); 
 					
-					_mm256_storeu_pd(c+(i+1)*dimj   , ci1j0);
+					_mm256_store_pd(c+(i+1)*dimj   , ci1j0);
 					_mm256_maskstore_pd(c+(i+1)*dimj+4, mask, ci1j1); 
 				}else{
 					//temporary use aki0, aki1 and mask
@@ -932,16 +932,16 @@ void mTxmq_core(bool is_trans, long dimi, long dimj, long dimk,
                     ci0j1 = FMA(aki0, bkj, ci0j1);
                 }
 				if(!is_trans){
-					_mm256_storeu_pd(c+i*dimj   , ci0j0);
+					_mm256_store_pd(c+i*dimj   , ci0j0);
 					_mm256_maskstore_pd(c+i*dimj+4, mask, ci0j1); 
 				}else{
-					_mm256_storeu_pd(tmp, ci0j0);
+					_mm256_store_pd(tmp, ci0j0);
 					c[0*dimi+i] = tmp[0];
 					c[1*dimi+i] = tmp[1];
 					c[2*dimi+i] = tmp[2];
 					c[3*dimi+i] = tmp[3];
 
-					_mm256_storeu_pd(tmp, ci0j1);
+					_mm256_store_pd(tmp, ci0j1);
 					switch(numj){
 					case 8:
 						c[7*dimi+i] = tmp[3];
@@ -1027,7 +1027,7 @@ void mTxmq_core(bool is_trans, long dimi, long dimj, long dimk,
 				if(!is_trans){
 					_mm256_maskstore_pd(c+i*dimj    , mask, ci0j0);
 				}else{
-					_mm256_storeu_pd(tmp, ci0j0);
+					_mm256_store_pd(tmp, ci0j0);
 					switch(numj){
 					case 4:
 						c[3*dimi+i] = tmp[3];
@@ -1070,7 +1070,7 @@ void mTxmq_core(bool is_trans, long dimi, long dimj, long dimk,
 void mTxmq(long dimi, long dimj, long dimk,
            double * __restrict__ c, const double * __restrict__ a, const double * __restrict__ b) {
 
-	if((dimj-1) % 24 >= (dimi-1) % 24){
+	if((dimj-1) % 24 > (dimi-1) % 24 && (dimj % 4 == 0 || dimi % 4 != 0)){
 		mTxmq_core(false, dimi, dimj, dimk, c, a, b);
 	}else{
 		mTxmq_core(true, dimj, dimi, dimk, c, b, a);
