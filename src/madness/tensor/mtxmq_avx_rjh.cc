@@ -172,7 +172,7 @@ void mTxmq_core(bool is_trans, long dimi, long dimj, long dimk,
 			ci1j3 = _mm256_setzero_pd();
 			ci1j4 = _mm256_setzero_pd();
 			ci1j5 = _mm256_setzero_pd();
-			
+
 			for (k=0; k<dimk; k++,pbkj+=dimj,paki+=dimi) {
 				aki0 = _mm256_broadcast_sd(paki);
 				aki1 = _mm256_broadcast_sd(paki+1);
@@ -1063,16 +1063,30 @@ void mTxmq(long dimi, long dimj, long dimk,
         int numi = (ni>24) ? 24 : ni;
 		double* __restrict__ ci = c;
 
-		if((numj-1) % 24 > (numi-1) % 24 && (numj % 4 == 0 || numi % 4 != 0)){
-			mTxmq_core(false, dimi, dimj, dimk, ci, a, b, ni, numj);
-			c += numj;
-			b += numj;
-			nj -= numj;
+		if(dimj % 24 >= 12 || dimi % 24 >= 12){
+			if((dimj-1) % 24 >= (dimi-1) % 24 && ((dimj % 4 == 0) || (dimi % 4 != 0))){
+				mTxmq_core(false, dimi, dimj, dimk, ci, a, b, ni, numj);
+				c += numj;
+				b += numj;
+				nj -= numj;
+			}else{
+				mTxmq_core(true, dimj, dimi, dimk, ci, b, a, nj, numi);
+				c += dimj*numi;
+				a += numi;
+				ni -= numi;
+			}
 		}else{
-			mTxmq_core(true, dimj, dimi, dimk, ci, b, a, nj, numi);
-			c += dimj*numi;
-			a += numi;
-			ni -= numi;
+			if(((numj-1) % 24 >= (numi-1) % 24) && ((numj % 4 == 0) || (numi % 4 != 0))){
+				mTxmq_core(false, dimi, dimj, dimk, ci, a, b, ni, numj);
+				c += numj;
+				b += numj;
+				nj -= numj;
+			}else{
+				mTxmq_core(true, dimj, dimi, dimk, ci, b, a, nj, numi);
+				c += dimj*numi;
+				a += numi;
+				ni -= numi;
+			}
 		}
 
 	}while(nj && ni);
