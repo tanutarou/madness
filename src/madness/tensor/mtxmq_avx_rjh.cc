@@ -126,15 +126,17 @@ namespace madness {
 #include <immintrin.h>
 #include <stdio.h>
 
-//#define FMA(a,b,c) _mm256_fmadd_pd (a, b, c)
-#define FMA(a,b,c) _mm256_add_pd(_mm256_mul_pd(a, b), c)
+#define FMA(a,b,c) _mm256_fmadd_pd (a, b, c)
+//#define FMA(a,b,c) _mm256_add_pd(_mm256_mul_pd(a, b), c)
 
 void mTxmq_core(bool is_trans, long dimi, long dimj, long dimk,
-           double * __restrict__ c, const double * __restrict__ a, const double * __restrict__ b, long numi, long numj) {
+           double * __restrict__ c, const double * __restrict__ a, const double * __restrict__ b, long numi, long numj, const int a_pad, const int b_pad, const int c_pad) {
 
     int i, k;
     int dimi2 = (numi>>1)<<1;
-    int dimj2 = dimj<<1;
+    int dimj2 = (dimj+b_pad)<<1;
+	dimj = dimj + b_pad;
+	dimi = dimi + a_pad;
 	double tmp[4];
 
     __m256d ci0j0, ci0j1, ci0j2, ci0j3, ci0j4, ci0j5;
@@ -995,7 +997,6 @@ void mTxmq_core(bool is_trans, long dimi, long dimj, long dimk,
 						mask = _mm256_set_epi32( 0, 0,-1,-1,-1,-1,-1,-1);	//reset mask
 						break;
 					case  2:
-
 						mask = _mm256_set_epi64x(0, 0, -1, -1);
 						_mm256_maskstore_pd(c+0*dimi+i, mask, aki0);
 						_mm256_maskstore_pd(c+1*dimi+i, mask, aki1);
@@ -1054,7 +1055,7 @@ void mTxmq_core(bool is_trans, long dimi, long dimj, long dimk,
 
     template<>
 void mTxmq(long dimi, long dimj, long dimk,
-           double * __restrict__ c, const double * __restrict__ a, const double * __restrict__ b) {
+           double * __restrict__ c, const double * __restrict__ a, const double * __restrict__ b, const int a_pad, const int b_pad, const int c_pad) {
 
 	int nj = dimj;
 	int ni = dimi;
@@ -1065,25 +1066,25 @@ void mTxmq(long dimi, long dimj, long dimk,
 
 		if(dimj % 24 >= 12 || dimi % 24 >= 12){
 			if((dimj-1) % 24 >= (dimi-1) % 24 && ((dimj % 4 == 0) || (dimi % 4 != 0))){
-				mTxmq_core(false, dimi, dimj, dimk, ci, a, b, ni, numj);
+				mTxmq_core(false, dimi, dimj, dimk, ci, a, b, ni, numj, a_pad, b_pad, c_pad);
 				c += numj;
 				b += numj;
 				nj -= numj;
 			}else{
-				mTxmq_core(true, dimj, dimi, dimk, ci, b, a, nj, numi);
-				c += dimj*numi;
+				mTxmq_core(true, dimj, dimi, dimk, ci, b, a, nj, numi, b_pad, a_pad, c_pad);
+				c += (dimj+b_pad)*numi;
 				a += numi;
 				ni -= numi;
 			}
 		}else{
 			if(((numj-1) % 24 >= (numi-1) % 24) && ((numj % 4 == 0) || (numi % 4 != 0))){
-				mTxmq_core(false, dimi, dimj, dimk, ci, a, b, ni, numj);
+				mTxmq_core(false, dimi, dimj, dimk, ci, a, b, ni, numj, a_pad, b_pad, c_pad);
 				c += numj;
 				b += numj;
 				nj -= numj;
 			}else{
-				mTxmq_core(true, dimj, dimi, dimk, ci, b, a, nj, numi);
-				c += dimj*numi;
+				mTxmq_core(true, dimj, dimi, dimk, ci, b, a, nj, numi, b_pad, a_pad, c_pad);
+				c += (dimj+b_pad)*numi;
 				a += numi;
 				ni -= numi;
 			}
@@ -1293,7 +1294,7 @@ void mTxmq(long dimi, long dimj, long dimk,
 namespace madness {
     template <>
     void mTxmq(const long dimi, const long dimj, const long dimk,
-               double_complex* restrict c, const double_complex* a, const double_complex* b) {
+               double_complex* restrict c, const double_complex* a, const double_complex* b, const int a_pad, const int b_pad, const int c_pad) {
 
         //PROFILE_BLOCK(mTxmq_complex_asm);
         const long dimi16 = dimi<<4;
