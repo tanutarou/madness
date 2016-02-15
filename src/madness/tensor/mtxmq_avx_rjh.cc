@@ -161,6 +161,9 @@ void mTxmq_core(bool is_trans, long dimi, long dimj, long dimk,
 		for (i=0; i<dimi2; i+=2,ci+=dimj2) {
 			const double* __restrict__ pbkj = b;
 			const double* __restrict__ paki = a+i;
+			//_mm_prefetch((char*)pbkj, 0);
+			//_mm_prefetch((char*)(pbkj+8), 0);
+			//_mm_prefetch((char*)(pbkj+16), 0);
 			ci0j0 = _mm256_setzero_pd();
 			ci0j1 = _mm256_setzero_pd();
 			ci0j2 = _mm256_setzero_pd();
@@ -175,7 +178,13 @@ void mTxmq_core(bool is_trans, long dimi, long dimj, long dimk,
 			ci1j4 = _mm256_setzero_pd();
 			ci1j5 = _mm256_setzero_pd();
 
+			//_mm_prefetch((char*)paki, 0);
+			//_mm_prefetch((char*)pbkj, 0);
+			//#pragma prefetch paki:0:4
 			for (k=0; k<dimk; k++,pbkj+=dimj,paki+=dimi) {
+				//_mm_prefetch((char*)(pbkj+24), 0);
+				//_mm_prefetch((char*)(pbkj+32), 0);
+				//_mm_prefetch((char*)(pbkj+40), 0);
 				aki0 = _mm256_broadcast_sd(paki);
 				aki1 = _mm256_broadcast_sd(paki+1);
 				
@@ -1064,30 +1073,16 @@ void mTxmq(long dimi, long dimj, long dimk,
         int numi = (ni>24) ? 24 : ni;
 		double* __restrict__ ci = c;
 
-		if(dimj % 24 >= 12 || dimi % 24 >= 12){
-			if((dimj-1) % 24 >= (dimi-1) % 24 && ((dimj % 4 == 0) || (dimi % 4 != 0))){
-				mTxmq_core(false, dimi, dimj, dimk, ci, a, b, ni, numj, a_pad, b_pad, c_pad);
-				c += numj;
-				b += numj;
-				nj -= numj;
-			}else{
-				mTxmq_core(true, dimj, dimi, dimk, ci, b, a, nj, numi, b_pad, a_pad, c_pad);
-				c += (dimj+b_pad)*numi;
-				a += numi;
-				ni -= numi;
-			}
+		if(ceil(numj / 4) - (4 - numj % 4) > ceil(numi / 4) - (4 - numi % 4) ){
+			mTxmq_core(false, dimi, dimj, dimk, ci, a, b, ni, numj, a_pad, b_pad, c_pad);
+			c += numj;
+			b += numj;
+			nj -= numj;
 		}else{
-			if(((numj-1) % 24 >= (numi-1) % 24) && ((numj % 4 == 0) || (numi % 4 != 0))){
-				mTxmq_core(false, dimi, dimj, dimk, ci, a, b, ni, numj, a_pad, b_pad, c_pad);
-				c += numj;
-				b += numj;
-				nj -= numj;
-			}else{
-				mTxmq_core(true, dimj, dimi, dimk, ci, b, a, nj, numi, b_pad, a_pad, c_pad);
-				c += (dimj+b_pad)*numi;
-				a += numi;
-				ni -= numi;
-			}
+			mTxmq_core(true, dimj, dimi, dimk, ci, b, a, nj, numi, b_pad, a_pad, c_pad);
+			c += (dimj+b_pad)*numi;
+			a += numi;
+			ni -= numi;
 		}
 
 	}while(nj && ni);
