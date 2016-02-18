@@ -34,7 +34,7 @@
 #include <madness/madness_config.h>
 
 // Disable for now to facilitate CI 
-#if !(defined(X86_32X) || defined(X86_64X))
+#if !(defined(X86_32) || defined(X86_64))
 
 #include <iostream>
 int main() {std::cout << "x86 only\n"; return 0;}
@@ -54,6 +54,10 @@ int main() {std::cout << "x86 only\n"; return 0;}
 
 using namespace madness;
 
+#define VALUE_TEST_RR 
+#define VALUE_TEST_RC 
+#define VALUE_TEST_CR 
+#define SPEED_TEST 
 
 #ifdef TIME_DGEMM
 
@@ -77,6 +81,36 @@ void ran_fill(int n, double *a) {
     while (n--) *a++ = ran();
 }
 
+template <typename aT, typename bT, typename cT>
+void value_test(const aT* a, const bT* b, cT* c, cT* d){
+	long ni, nj, nk, i;
+	for (ni=1; ni<60; ni+=1) {
+		for (nj=1; nj<100; nj+=1) {
+			for (nk=1; nk<100; nk+=1) {
+				memset(c, 0, ni*nj*sizeof(cT));
+				memset(d, 0, ni*nj*sizeof(cT));
+				mTxm (ni,nj,nk,c,a,b);
+				mTxmq(ni,nj,nk,d,a,b);
+				for (i=0; i<ni*nj; ++i) {
+					double err = std::abs(d[i]-c[i]);
+					/* This test is sensitive to the compilation options.
+					   Be sure to have the reference code above compiled
+					   -msse2 -fpmath=sse if using GCC.  Otherwise, to
+					   pass the test you may need to change the threshold
+					   to circa 1e-13.
+					*/
+					if (err > 1e-13) {
+						printf("test_mtxmq: error %ld %ld %ld %e\n",ni,nj,nk,err);
+						exit(1);
+					}
+				}
+			}
+		}
+	}
+
+}
+
+/*
 void mTxm(long dimi, long dimj, long dimk,
           double* c, const double* a, const double* b) {
     int i, j, k;
@@ -88,6 +122,7 @@ void mTxm(long dimi, long dimj, long dimk,
         }
     }
 }
+*/
 
 void crap(double rate, double fastest, double start) {
     if (rate == 0) printf("darn compiler bug %e %e %lf\n",rate,fastest,start);
@@ -163,18 +198,18 @@ void trantimer(const char* s, long ni, long nj, long nk, double *a, double *b, d
 }
 
 int main(int argc, char * argv[]) {
-    const long nimax=30*30;
-    const long njmax=100;
+    const long nimax=30*30*2;
+    const long njmax=100*2;
     const long nkmax=100;
     long ni, nj, nk, i, m;
     double *a, *b, *c, *d;
 
     SafeMPI::Init_thread(argc, argv, MPI_THREAD_SINGLE);
 
-    posix_memalign((void **) &a, 16, nkmax*nimax*sizeof(double));
-    posix_memalign((void **) &b, 16, nkmax*njmax*sizeof(double));
-    posix_memalign((void **) &c, 16, nimax*njmax*sizeof(double));
-    posix_memalign((void **) &d, 16, nimax*njmax*sizeof(double));
+    posix_memalign((void **) &a, 32, nkmax*nimax*sizeof(double));
+    posix_memalign((void **) &b, 32, nkmax*njmax*sizeof(double));
+    posix_memalign((void **) &c, 32, nimax*njmax*sizeof(double));
+    posix_memalign((void **) &d, 32, nimax*njmax*sizeof(double));
 
     ran_fill(nkmax*nimax, a);
     ran_fill(nkmax*njmax, b);
@@ -193,35 +228,29 @@ int main(int argc, char * argv[]) {
 /*     return 0; */
 
     printf("Starting to test ... \n");
-    for (ni=1; ni<60; ni+=1) {
-        for (nj=1; nj<100; nj+=1) {
-            for (nk=1; nk<100; nk+=1) {
-                for (i=0; i<ni*nj; ++i) d[i] = c[i] = 0.0;
-                mTxm (ni,nj,nk,c,a,b);
-                mTxmq(ni,nj,nk,d,a,b);
-                for (i=0; i<ni*nj; ++i) {
-                    double err = std::abs(d[i]-c[i]);
-                    /* This test is sensitive to the compilation options.
-                       Be sure to have the reference code above compiled
-                       -msse2 -fpmath=sse if using GCC.  Otherwise, to
-                       pass the test you may need to change the threshold
-                       to circa 1e-13.
-                    */
-                    if (err > 1e-13) {
-                        printf("test_mtxmq: error %ld %ld %ld %e\n",ni,nj,nk,err);
-                        exit(1);
-                    }
-                }
-            }
-        }
-    }
+#ifdef VALUE_TEST_RR
+    printf("Starting to Real x Real test ... \n");
+	value_test(a, b, c, d);
     printf("... OK!\n");
+#endif
+#ifdef VALUE_TEST_RC
+    printf("Starting to Real x Complex test ... \n");
+	value_test(a, (double_complex*)b, (double_complex*)c, (double_complex*)d);
+    printf("... OK!\n");
+#endif
+#ifdef VALUE_TEST_CR
+    printf("Starting to Complex x Real test ... \n");
+	value_test((double_complex*)a, b, (double_complex*)c, (double_complex*)d);
+    printf("... OK!\n");
+#endif
 
+#ifdef SPEED_TEST
     printf("%20s %3s %3s %3s %8s %8s (GF/s)\n", "type", "M", "N", "K", "LOOP", "BLAS");
     for (ni=2; ni<60; ni+=2) timer("(m*m)T*(m*m)", ni,ni,ni,a,b,c);
     for (m=2; m<=30; m+=2) timer("(m*m,m)T*(m*m)", m*m,m,m,a,b,c);
     for (m=2; m<=30; m+=2) trantimer("tran(m,m,m)", m*m,m,m,a,b,c);
     for (m=2; m<=20; m+=2) timer("(20*20,20)T*(20,m)", 20*20,m,20,a,b,c);
+#endif
 
     SafeMPI::Finalize();
 
