@@ -129,6 +129,7 @@ namespace madness {
 #include <immintrin.h>
 #include <stdio.h>
 
+
 //#define FMA(a,b,c) _mm256_fmadd_pd (a, b, c)
 #define FMA(a,b,c) _mm256_add_pd(_mm256_mul_pd(a, b), c)
 
@@ -2330,7 +2331,7 @@ void mTxmq_core(bool is_trans, long dimi, long dimj, long dimk,
 	}
 }
 
-//real x real
+//Real x Real(AVX)
     template<>
 void mTxmq(long dimi, long dimj, long dimk,
            double * __restrict__ c, const double * __restrict__ a, const double * __restrict__ b) {
@@ -2342,22 +2343,35 @@ void mTxmq(long dimi, long dimj, long dimk,
         int numi = (ni>24) ? 24 : ni;
 		double* __restrict__ ci = c;
 
-		if(ceil(numj / 4.0) - (4 - numj % 4) > ceil(numi / 4.0) - (4 - numi % 4)){
-			mTxmq_core(false, dimi, dimj, dimk, ci, a, b, ni, numj);
-			c += numj;
-			b += numj;
-			nj -= numj;
+		if(dimj % 24 >= 12 || dimi % 24 >= 12){
+			if((dimj-1) % 24 >= (dimi-1) % 24 && ((dimj % 4 == 0) || (dimi % 4 != 0))){
+				mTxmq_core(false, dimi, dimj, dimk, ci, a, b, ni, numj);
+				c += numj;
+				b += numj;
+				nj -= numj;
+			}else{
+				mTxmq_core(true, dimj, dimi, dimk, ci, b, a, nj, numi);
+				c += dimj*numi;
+				a += numi;
+				ni -= numi;
+			}
 		}else{
-			mTxmq_core(true, dimj, dimi, dimk, ci, b, a, nj, numi);
-			c += dimj*numi;
-			a += numi;
-			ni -= numi;
+			if((numj-1) % 24 >= (numi-1) % 24 && ((numj % 4 == 0) || (numi % 4 != 0))){
+				mTxmq_core(false, dimi, dimj, dimk, ci, a, b, ni, numj);
+				c += numj;
+				b += numj;
+				nj -= numj;
+			}else{
+				mTxmq_core(true, dimj, dimi, dimk, ci, b, a, nj, numi);
+				c += dimj*numi;
+				a += numi;
+				ni -= numi;
+			}
 		}
-
 	}while(nj && ni);
 }
 
-//real x complex
+//Real x Complex(AVX)
     template<>
 void mTxmq(long dimi, long dimj, long dimk,
            double_complex* __restrict__ c, const double* __restrict__ a, const double_complex* __restrict__ b) {
@@ -2365,7 +2379,7 @@ void mTxmq(long dimi, long dimj, long dimk,
 	mTxmq(dimi, dimj*2, dimk, (double*)c, a, (double*)b);
 }
 
-//complex x real
+//Complex x Real(AVX)
     template<>
 void mTxmq(long dimi, long dimj, long dimk,
            double_complex* __restrict__ c, const double_complex* __restrict__ a, const double* __restrict__ b) {
@@ -2379,16 +2393,31 @@ void mTxmq(long dimi, long dimj, long dimk,
 		double_complex* __restrict__ ci = c;
 
 		//a,c are double_complex*(not double*)
-		if(ceil(numj / 4.0) - (4 - numj % 4) > ceil(numi / 4.0) - (4 - numi % 4)){
-			mTxmq_core(false, dimi, dimj, dimk, ci, a, b, ni, numj);
-			c += numj;
-			b += numj;
-			nj -= numj;
+		if(dimj % 24 >= 12 || dimi % 24 >= 12){
+			if((dimj-1) % 24 >= (dimi-1) % 24 && ((dimj % 4 == 0) || (dimi % 4 != 0))){
+				mTxmq_core(false, dimi, dimj, dimk, ci, a, b, ni, numj);
+				c += numj;
+				b += numj;
+				nj -= numj;
+			}else{
+				mTxmq_core(true, dimj, dimi, dimk, ci, b, a, nj, numi);
+				c += dimj*(numi/2);
+				a += numi/2;
+				ni -= numi;
+			}
 		}else{
-			mTxmq_core(true, dimj, dimi, dimk, ci, b, a, nj, numi);
-			c += dimj*(numi/2);
-			a += numi/2;
-			ni -= numi;
+			if((numj-1) % 24 >= (numi-1) % 24 && ((numj % 4 == 0) || (numi % 4 != 0))){
+				mTxmq_core(false, dimi, dimj, dimk, ci, a, b, ni, numj);
+				c += numj;
+				b += numj;
+				nj -= numj;
+			}else{
+				mTxmq_core(true, dimj, dimi, dimk, ci, b, a, nj, numi);
+				c += dimj*(numi/2);
+				a += numi/2;
+				ni -= numi;
+			}
+
 		}
 
 	}while(nj && ni);
