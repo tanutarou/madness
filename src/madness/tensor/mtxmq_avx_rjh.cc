@@ -2331,6 +2331,702 @@ void mTxmq_core(bool is_trans, long dimi, long dimj, long dimk,
 	}
 }
 
+void mTxmq_core(bool is_trans, long dimi, long dimj, long dimk,
+           double_complex * __restrict__ c0, const double_complex * __restrict__ a0, const double_complex * __restrict__ b0, long numi, long numj) {
+	
+    int i, k;
+    int dimi2 = (numi>>1)<<1;
+    int dimj2 = dimj<<1;
+	double tmp[4];
+
+    __m256d ci0j0, ci0j1, ci0j2, ci0j3;
+    __m256d ci1j0, ci1j1, ci1j2, ci1j3;
+    __m256d aki0, aki1, bkj;
+	__m256d tmp00, tmp01, tmp10, tmp11;
+    __m256i mask = _mm256_set_epi32(0,0,-1,-1,-1,-1,-1,-1);
+    // __m256d tmp; //temporary from aki*bkj
+    
+	double* a = (double*)a0;
+	double* b = (double*)b0;
+	double* c = (double*)c0;
+	double* __restrict__ ci = (double*)c0;
+
+	//pointer converter 
+	const auto conv_addr_trans2normal = [dimi, c](long i, long j){return c + dimi * j + i;};
+
+	switch (numj) {
+	case 16:
+	case 15:
+	case 14:
+	case 13:
+		if      (numj == 16) mask = _mm256_set_epi32(-1,-1,-1,-1,-1,-1,-1,-1);
+		else if (numj == 15) mask = _mm256_set_epi32( 0, 0,-1,-1,-1,-1,-1,-1);
+		else if (numj == 14) mask = _mm256_set_epi32( 0, 0, 0, 0,-1,-1,-1,-1);
+		else if (numj == 13) mask = _mm256_set_epi32( 0, 0, 0, 0, 0, 0,-1,-1);
+
+		for (i=0; i<dimi2; i+=2,ci+=dimj2) {
+			const double* __restrict__ pbkj = b;
+			const double* __restrict__ paki = a+i*2;
+			ci0j0 = _mm256_setzero_pd();
+			ci0j1 = _mm256_setzero_pd();
+			ci0j2 = _mm256_setzero_pd();
+			ci0j3 = _mm256_setzero_pd();
+			
+			ci1j0 = _mm256_setzero_pd();
+			ci1j1 = _mm256_setzero_pd();
+			ci1j2 = _mm256_setzero_pd();
+			ci1j3 = _mm256_setzero_pd();
+			
+			for (k=0; k<dimk; k++,pbkj+=dimj*2,paki+=dimi*2) {
+				//load:[a0.re, a0.im, a0.re, a0.im]
+				aki0 = _mm256_set_pd(*(paki+1), *(paki+0), *(paki+1), *(paki+0));
+				aki1 = _mm256_set_pd(*(paki+3), *(paki+2), *(paki+3), *(paki+2));
+				
+				bkj = _mm256_loadu_pd(pbkj   );
+				//multiply complex vector 
+				// [a0.re, a0.im, a0.re, a0.im] * [b0.re, b0.im, b1.re, b1.im]
+				//(1). make only imaginary of aki
+				// [a0.im, a0.im, a0.im, a0.im]
+				tmp00 = _mm256_shuffle_pd(aki0, aki0, 0xF);
+				tmp10 = _mm256_shuffle_pd(aki1, aki1, 0xF);
+				//(2). swap real and imaginary of bkj 
+				// [b0.im, b0.re, b1.im, b1.re]
+				tmp01 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp11 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				//(3). multiply (1) and (2)
+				// [a0.im*b0.im, a0.im*b0.re, a0.im*b1.im, a0.im*b1.re]
+				tmp00 = _mm256_mul_pd(tmp00, tmp01);
+				tmp10 = _mm256_mul_pd(tmp10, tmp11);
+				//(4). make only real of aki
+				// [a0.re, a0.re, a0.re, a0.re]
+				tmp01 = _mm256_shuffle_pd(aki0, aki0, 0x0);
+				tmp11 = _mm256_shuffle_pd(aki1, aki1, 0x0);
+				//(5). FMA: (4) * b -+ (3)
+				tmp00 = _mm256_fmaddsub_pd(tmp01, bkj, tmp00);
+				tmp01 = _mm256_fmaddsub_pd(tmp11, bkj, tmp10);
+				ci0j0 = _mm256_add_pd(ci0j0, tmp00);
+				ci1j0 = _mm256_add_pd(ci1j0, tmp01);
+
+				bkj = _mm256_loadu_pd(pbkj+ 4);
+				tmp00 = _mm256_shuffle_pd(aki0, aki0, 0xF);
+				tmp10 = _mm256_shuffle_pd(aki1, aki1, 0xF);
+				tmp01 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp11 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp00 = _mm256_mul_pd(tmp00, tmp01);
+				tmp10 = _mm256_mul_pd(tmp10, tmp11);
+				tmp01 = _mm256_shuffle_pd(aki0, aki0, 0x0);
+				tmp11 = _mm256_shuffle_pd(aki1, aki1, 0x0);
+				tmp00 = _mm256_fmaddsub_pd(tmp01, bkj, tmp00);
+				tmp01 = _mm256_fmaddsub_pd(tmp11, bkj, tmp10);
+				ci0j1 = _mm256_add_pd(ci0j1, tmp00);
+				ci1j1 = _mm256_add_pd(ci1j1, tmp01);
+
+				bkj = _mm256_loadu_pd(pbkj+ 8);
+				tmp00 = _mm256_shuffle_pd(aki0, aki0, 0xF);
+				tmp10 = _mm256_shuffle_pd(aki1, aki1, 0xF);
+				tmp01 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp11 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp00 = _mm256_mul_pd(tmp00, tmp01);
+				tmp10 = _mm256_mul_pd(tmp10, tmp11);
+				tmp01 = _mm256_shuffle_pd(aki0, aki0, 0x0);
+				tmp11 = _mm256_shuffle_pd(aki1, aki1, 0x0);
+				tmp00 = _mm256_fmaddsub_pd(tmp01, bkj, tmp00);
+				tmp01 = _mm256_fmaddsub_pd(tmp11, bkj, tmp10);
+				ci0j2 = _mm256_add_pd(ci0j2, tmp00);
+				ci1j2 = _mm256_add_pd(ci1j2, tmp01);
+				
+				bkj = _mm256_maskload_pd(pbkj+12,mask);
+				tmp00 = _mm256_shuffle_pd(aki0, aki0, 0xF);
+				tmp10 = _mm256_shuffle_pd(aki1, aki1, 0xF);
+				tmp01 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp11 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp00 = _mm256_mul_pd(tmp00, tmp01);
+				tmp10 = _mm256_mul_pd(tmp10, tmp11);
+				tmp01 = _mm256_shuffle_pd(aki0, aki0, 0x0);
+				tmp11 = _mm256_shuffle_pd(aki1, aki1, 0x0);
+				tmp00 = _mm256_fmaddsub_pd(tmp01, bkj, tmp00);
+				tmp01 = _mm256_fmaddsub_pd(tmp11, bkj, tmp10);
+				ci0j3 = _mm256_add_pd(ci0j3, tmp00);
+				ci1j3 = _mm256_add_pd(ci1j3, tmp01);
+			}
+			if(!is_trans){
+				_mm256_storeu_pd(c+i*dimj*2   , ci0j0);
+				_mm256_storeu_pd(c+i*dimj*2+ 4, ci0j1);
+				_mm256_storeu_pd(c+i*dimj*2+ 8, ci0j2);
+				_mm256_maskstore_pd(c+i*dimj*2+12, mask, ci0j3); 
+			   
+				_mm256_storeu_pd(c+(i+1)*dimj*2   , ci1j0);
+				_mm256_storeu_pd(c+(i+1)*dimj*2+ 4, ci1j1);
+				_mm256_storeu_pd(c+(i+1)*dimj*2+ 8, ci1j2);
+				_mm256_maskstore_pd(c+(i+1)*dimj*2+12, mask, ci1j3);
+			}else{
+				//temporary use aki0, aki1 and mask
+				aki0 = _mm256_shuffle_pd(ci0j0, ci1j0, 0);
+				aki1 = _mm256_shuffle_pd(ci0j0, ci1j0, -1);
+				_mm256_storeu2_m128d(conv_addr_trans2normal(i,2), conv_addr_trans2normal(i,0), aki0);
+				_mm256_storeu2_m128d(conv_addr_trans2normal(i,3), conv_addr_trans2normal(i,1), aki1);
+
+				aki0 = _mm256_shuffle_pd(ci0j1, ci1j1, 0);
+				aki1 = _mm256_shuffle_pd(ci0j1, ci1j1, -1);
+				_mm256_storeu2_m128d(conv_addr_trans2normal(i,6), conv_addr_trans2normal(i,4), aki0);
+				_mm256_storeu2_m128d(conv_addr_trans2normal(i,7), conv_addr_trans2normal(i,5), aki1);
+
+				aki0 = _mm256_shuffle_pd(ci0j2, ci1j2, 0);
+				aki1 = _mm256_shuffle_pd(ci0j2, ci1j2, -1);
+				_mm256_storeu2_m128d(conv_addr_trans2normal(i,10), conv_addr_trans2normal(i,8), aki0);
+				_mm256_storeu2_m128d(conv_addr_trans2normal(i,11), conv_addr_trans2normal(i,9), aki1);
+
+				aki0 = _mm256_shuffle_pd(ci0j3, ci1j3, 0);
+				aki1 = _mm256_shuffle_pd(ci0j3, ci1j3, -1);
+				switch(numj){
+					case 16:
+						_mm256_storeu2_m128d(conv_addr_trans2normal(i,14), conv_addr_trans2normal(i,12), aki0);
+						_mm256_storeu2_m128d(conv_addr_trans2normal(i,15), conv_addr_trans2normal(i,13), aki1);
+						break;
+					case 15:
+						mask = _mm256_set_epi64x(0, 0, -1, -1);
+						_mm256_storeu2_m128d(conv_addr_trans2normal(i,14), conv_addr_trans2normal(i,12), aki0);
+						_mm256_maskstore_pd(conv_addr_trans2normal(i,13), mask, aki1);
+						mask = _mm256_set_epi32( 0, 0,-1,-1,-1,-1,-1,-1);	//reset mask
+						break;
+					case 14:
+						mask = _mm256_set_epi64x(0, 0, -1, -1);
+						_mm256_maskstore_pd(conv_addr_trans2normal(i,12), mask, aki0);
+						_mm256_maskstore_pd(conv_addr_trans2normal(i,13), mask, aki1);
+						mask = _mm256_set_epi32( 0, 0, 0, 0,-1,-1,-1,-1);	//reset mask
+						break;
+					case 13:
+						mask = _mm256_set_epi64x(0, 0, -1, -1);
+						_mm256_maskstore_pd(conv_addr_trans2normal(i,12), mask, aki0);
+						mask = _mm256_set_epi32( 0, 0, 0, 0, 0, 0,-1,-1);	//reset mask
+						break;
+				}
+			}
+		}
+			
+		if (numi&0x1) {
+			const double* __restrict__ pbkj = b;
+			const double* __restrict__ paki = a+i*2;
+			ci0j0 = _mm256_setzero_pd();
+			ci0j1 = _mm256_setzero_pd();
+			ci0j2 = _mm256_setzero_pd();
+			ci0j3 = _mm256_setzero_pd();
+			
+			for (k=0; k<dimk; k++,pbkj+=dimj*2,paki+=dimi*2) {
+				aki0 = _mm256_set_pd(*(paki+1), *(paki+0), *(paki+1), *(paki+0));
+				
+				bkj = _mm256_loadu_pd(pbkj   );
+				tmp00 = _mm256_shuffle_pd(aki0, aki0, 0xF);
+				tmp01 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp00 = _mm256_mul_pd(tmp00, tmp01);
+				tmp01 = _mm256_shuffle_pd(aki0, aki0, 0x0);
+				tmp00 = _mm256_fmaddsub_pd(tmp01, bkj, tmp00);
+				ci0j0 = _mm256_add_pd(ci0j0, tmp00);
+				
+				bkj = _mm256_loadu_pd(pbkj+ 4);
+				tmp00 = _mm256_shuffle_pd(aki0, aki0, 0xF);
+				tmp01 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp00 = _mm256_mul_pd(tmp00, tmp01);
+				tmp01 = _mm256_shuffle_pd(aki0, aki0, 0x0);
+				tmp00 = _mm256_fmaddsub_pd(tmp01, bkj, tmp00);
+				ci0j1 = _mm256_add_pd(ci0j1, tmp00);
+				
+				bkj = _mm256_loadu_pd(pbkj+ 8);
+				tmp00 = _mm256_shuffle_pd(aki0, aki0, 0xF);
+				tmp01 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp00 = _mm256_mul_pd(tmp00, tmp01);
+				tmp01 = _mm256_shuffle_pd(aki0, aki0, 0x0);
+				tmp00 = _mm256_fmaddsub_pd(tmp01, bkj, tmp00);
+				ci0j2 = _mm256_add_pd(ci0j2, tmp00);
+				
+				bkj = _mm256_maskload_pd(pbkj+12,mask);
+				tmp00 = _mm256_shuffle_pd(aki0, aki0, 0xF);
+				tmp01 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp00 = _mm256_mul_pd(tmp00, tmp01);
+				tmp01 = _mm256_shuffle_pd(aki0, aki0, 0x0);
+				tmp00 = _mm256_fmaddsub_pd(tmp01, bkj, tmp00);
+				ci0j3 = _mm256_add_pd(ci0j3, tmp00);
+			}
+			if(!is_trans){
+				_mm256_storeu_pd(c+i*dimj*2   , ci0j0);
+				_mm256_storeu_pd(c+i*dimj*2+ 4, ci0j1);
+				_mm256_storeu_pd(c+i*dimj*2+ 8, ci0j2);
+				_mm256_maskstore_pd(c+i*dimj*2+12, mask, ci0j3); 
+			}else{
+				_mm256_storeu_pd(tmp, ci0j0);
+				c[0*dimi+i] = tmp[0];
+				c[1*dimi+i] = tmp[1];
+				c[2*dimi+i] = tmp[2];
+				c[3*dimi+i] = tmp[3];
+
+				_mm256_storeu_pd(tmp, ci0j1);
+				c[ 4*dimi+i] = tmp[0];
+				c[ 5*dimi+i] = tmp[1];
+				c[ 6*dimi+i] = tmp[2];
+				c[ 7*dimi+i] = tmp[3];
+
+				_mm256_storeu_pd(tmp, ci0j2);
+				c[ 8*dimi+i] = tmp[0];
+				c[ 9*dimi+i] = tmp[1];
+				c[10*dimi+i] = tmp[2];
+				c[11*dimi+i] = tmp[3];
+
+				_mm256_storeu_pd(tmp, ci0j3);
+				switch(numj){
+				case 16:
+					c[15*dimi+i] = tmp[3];
+				case 15:
+					c[14*dimi+i] = tmp[2];
+				case 14:
+					c[13*dimi+i] = tmp[1];
+				case 13:
+					c[12*dimi+i] = tmp[0];
+				}
+			}
+		}
+
+		break;
+		
+	case 12:
+	case 11:
+	case 10:
+	case  9:
+		if      (numj == 12) mask = _mm256_set_epi32(-1,-1,-1,-1,-1,-1,-1,-1);
+		else if (numj == 11) mask = _mm256_set_epi32( 0, 0,-1,-1,-1,-1,-1,-1);
+		else if (numj == 10) mask = _mm256_set_epi32( 0, 0, 0, 0,-1,-1,-1,-1);
+		else if (numj ==  9) mask = _mm256_set_epi32( 0, 0, 0, 0, 0, 0,-1,-1);
+
+		for (i=0; i<dimi2; i+=2,ci+=dimj2) {
+			const double* __restrict__ pbkj = b;
+			const double* __restrict__ paki = a+i*2;
+			ci0j0 = _mm256_setzero_pd();
+			ci0j1 = _mm256_setzero_pd();
+			ci0j2 = _mm256_setzero_pd();
+			
+			ci1j0 = _mm256_setzero_pd();
+			ci1j1 = _mm256_setzero_pd();
+			ci1j2 = _mm256_setzero_pd();
+			
+			for (k=0; k<dimk; k++,pbkj+=dimj*2,paki+=dimi*2) {
+				aki0 = _mm256_set_pd(*(paki+1), *(paki+0), *(paki+1), *(paki+0));
+				aki1 = _mm256_set_pd(*(paki+3), *(paki+2), *(paki+3), *(paki+2));
+				
+				bkj = _mm256_loadu_pd(pbkj);
+				tmp00 = _mm256_shuffle_pd(aki0, aki0, 0xF);
+				tmp10 = _mm256_shuffle_pd(aki1, aki1, 0xF);
+				tmp01 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp11 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp00 = _mm256_mul_pd(tmp00, tmp01);
+				tmp10 = _mm256_mul_pd(tmp10, tmp11);
+				tmp01 = _mm256_shuffle_pd(aki0, aki0, 0x0);
+				tmp11 = _mm256_shuffle_pd(aki1, aki1, 0x0);
+				tmp00 = _mm256_fmaddsub_pd(tmp01, bkj, tmp00);
+				tmp01 = _mm256_fmaddsub_pd(tmp11, bkj, tmp10);
+				ci0j0 = _mm256_add_pd(ci0j0, tmp00);
+				ci1j0 = _mm256_add_pd(ci1j0, tmp01);
+
+				
+				bkj = _mm256_loadu_pd(pbkj+ 4);
+				tmp00 = _mm256_shuffle_pd(aki0, aki0, 0xF);
+				tmp10 = _mm256_shuffle_pd(aki1, aki1, 0xF);
+				tmp01 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp11 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp00 = _mm256_mul_pd(tmp00, tmp01);
+				tmp10 = _mm256_mul_pd(tmp10, tmp11);
+				tmp01 = _mm256_shuffle_pd(aki0, aki0, 0x0);
+				tmp11 = _mm256_shuffle_pd(aki1, aki1, 0x0);
+				tmp00 = _mm256_fmaddsub_pd(tmp01, bkj, tmp00);
+				tmp01 = _mm256_fmaddsub_pd(tmp11, bkj, tmp10);
+				ci0j1 = _mm256_add_pd(ci0j1, tmp00);
+				ci1j1 = _mm256_add_pd(ci1j1, tmp01);
+				
+				bkj = _mm256_maskload_pd(pbkj+8,mask);
+				tmp00 = _mm256_shuffle_pd(aki0, aki0, 0xF);
+				tmp10 = _mm256_shuffle_pd(aki1, aki1, 0xF);
+				tmp01 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp11 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp00 = _mm256_mul_pd(tmp00, tmp01);
+				tmp10 = _mm256_mul_pd(tmp10, tmp11);
+				tmp01 = _mm256_shuffle_pd(aki0, aki0, 0x0);
+				tmp11 = _mm256_shuffle_pd(aki1, aki1, 0x0);
+				tmp00 = _mm256_fmaddsub_pd(tmp01, bkj, tmp00);
+				tmp01 = _mm256_fmaddsub_pd(tmp11, bkj, tmp10);
+				ci0j2 = _mm256_add_pd(ci0j2, tmp00);
+				ci1j2 = _mm256_add_pd(ci1j2, tmp01);
+			}
+			if(!is_trans){
+				_mm256_storeu_pd(c+i*dimj*2   , ci0j0);
+				_mm256_storeu_pd(c+i*dimj*2+ 4, ci0j1);
+				_mm256_maskstore_pd(c+i*dimj*2+8, mask, ci0j2); 
+				
+				_mm256_storeu_pd(c+(i+1)*dimj*2   , ci1j0);
+				_mm256_storeu_pd(c+(i+1)*dimj*2+ 4, ci1j1);
+				_mm256_maskstore_pd(c+(i+1)*dimj*2+8, mask, ci1j2); 
+			}else{
+				//temporary use aki0, aki1 and mask
+				aki0 = _mm256_shuffle_pd(ci0j0, ci1j0, 0);
+				aki1 = _mm256_shuffle_pd(ci0j0, ci1j0, -1);
+				_mm256_storeu2_m128d(conv_addr_trans2normal(i,2), conv_addr_trans2normal(i,0), aki0);
+				_mm256_storeu2_m128d(conv_addr_trans2normal(i,3), conv_addr_trans2normal(i,1), aki1);
+
+				aki0 = _mm256_shuffle_pd(ci0j1, ci1j1, 0);
+				aki1 = _mm256_shuffle_pd(ci0j1, ci1j1, -1);
+				_mm256_storeu2_m128d(conv_addr_trans2normal(i,6), conv_addr_trans2normal(i,4), aki0);
+				_mm256_storeu2_m128d(conv_addr_trans2normal(i,7), conv_addr_trans2normal(i,5), aki1);
+
+				aki0 = _mm256_shuffle_pd(ci0j2, ci1j2, 0);
+				aki1 = _mm256_shuffle_pd(ci0j2, ci1j2, -1);
+				switch(numj){
+					case 12:
+						_mm256_storeu2_m128d(conv_addr_trans2normal(i,10), conv_addr_trans2normal(i,8), aki0);
+						_mm256_storeu2_m128d(conv_addr_trans2normal(i,11), conv_addr_trans2normal(i,9), aki1);
+						break;
+					case 11:
+						mask = _mm256_set_epi64x(0, 0, -1, -1);
+						_mm256_storeu2_m128d(conv_addr_trans2normal(i,10), conv_addr_trans2normal(i,8), aki0);
+						_mm256_maskstore_pd(conv_addr_trans2normal(i,9), mask, aki1);
+						mask = _mm256_set_epi32( 0, 0,-1,-1,-1,-1,-1,-1);	//reset mask
+						break;
+					case 10:
+						mask = _mm256_set_epi64x(0, 0, -1, -1);
+						_mm256_maskstore_pd(conv_addr_trans2normal(i,8), mask, aki0);
+						_mm256_maskstore_pd(conv_addr_trans2normal(i,9), mask, aki1);
+						mask = _mm256_set_epi32( 0, 0, 0, 0,-1,-1,-1,-1);	//reset mask
+						break;
+					case  9:
+						mask = _mm256_set_epi64x(0, 0, -1, -1);
+						_mm256_maskstore_pd(conv_addr_trans2normal(i,8), mask, aki0);
+						mask = _mm256_set_epi32( 0, 0, 0, 0, 0, 0,-1,-1);	//reset mask
+						break;
+				}
+			}
+		}
+			
+		if (numi&0x1) {
+			const double* __restrict__ pbkj = b;
+			const double* __restrict__ paki = a+i*2;
+			ci0j0 = _mm256_setzero_pd();
+			ci0j1 = _mm256_setzero_pd();
+			ci0j2 = _mm256_setzero_pd();
+			
+			for (k=0; k<dimk; k++,pbkj+=dimj*2,paki+=dimi*2) {
+				aki0 = _mm256_set_pd(*(paki+1), *(paki+0), *(paki+1), *(paki+0));
+				
+				bkj = _mm256_loadu_pd(pbkj   );
+				tmp00 = _mm256_shuffle_pd(aki0, aki0, 0xF);
+				tmp01 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp00 = _mm256_mul_pd(tmp00, tmp01);
+				tmp01 = _mm256_shuffle_pd(aki0, aki0, 0x0);
+				tmp00 = _mm256_fmaddsub_pd(tmp01, bkj, tmp00);
+				ci0j0 = _mm256_add_pd(ci0j0, tmp00);
+				
+				bkj = _mm256_loadu_pd(pbkj+ 4);
+				tmp00 = _mm256_shuffle_pd(aki0, aki0, 0xF);
+				tmp01 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp00 = _mm256_mul_pd(tmp00, tmp01);
+				tmp01 = _mm256_shuffle_pd(aki0, aki0, 0x0);
+				tmp00 = _mm256_fmaddsub_pd(tmp01, bkj, tmp00);
+				ci0j1 = _mm256_add_pd(ci0j1, tmp00);
+				
+				bkj = _mm256_maskload_pd(pbkj+8,mask);
+				tmp00 = _mm256_shuffle_pd(aki0, aki0, 0xF);
+				tmp01 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp00 = _mm256_mul_pd(tmp00, tmp01);
+				tmp01 = _mm256_shuffle_pd(aki0, aki0, 0x0);
+				tmp00 = _mm256_fmaddsub_pd(tmp01, bkj, tmp00);
+				ci0j2 = _mm256_add_pd(ci0j2, tmp00);
+			}
+			if(!is_trans){
+				_mm256_storeu_pd(c+i*dimj*2   , ci0j0);
+				_mm256_storeu_pd(c+i*dimj*2+ 4, ci0j1);
+				_mm256_maskstore_pd(c+i*dimj*2+8, mask, ci0j2); 
+			}else{
+				_mm256_storeu_pd(tmp, ci0j0);
+				c[0*dimi+i] = tmp[0];
+				c[1*dimi+i] = tmp[1];
+				c[2*dimi+i] = tmp[2];
+				c[3*dimi+i] = tmp[3];
+
+				_mm256_storeu_pd(tmp, ci0j1);
+				c[4*dimi+i] = tmp[0];
+				c[5*dimi+i] = tmp[1];
+				c[6*dimi+i] = tmp[2];
+				c[7*dimi+i] = tmp[3];
+
+				_mm256_storeu_pd(tmp, ci0j2);
+				switch(numj){
+				case 12:
+					c[11*dimi+i] = tmp[3];
+				case 11:
+					c[10*dimi+i] = tmp[2];
+				case 10:
+					c[9*dimi+i] = tmp[1];
+				case  9:
+					c[8*dimi+i] = tmp[0];
+				}
+			}
+		}
+
+		break;
+		
+	case 8:
+	case 7:
+	case 6:
+	case 5:
+		if      (numj == 8) mask = _mm256_set_epi32(-1,-1,-1,-1,-1,-1,-1,-1);
+		else if (numj == 7) mask = _mm256_set_epi32( 0, 0,-1,-1,-1,-1,-1,-1);
+		else if (numj == 6) mask = _mm256_set_epi32( 0, 0, 0, 0,-1,-1,-1,-1);
+		else if (numj == 5) mask = _mm256_set_epi32( 0, 0, 0, 0, 0, 0,-1,-1);
+		for (i=0; i<dimi2; i+=2,ci+=dimj2) {
+			const double* __restrict__ pbkj = b;
+			const double* __restrict__ paki = a+i*2;
+			ci0j0 = _mm256_setzero_pd();
+			ci0j1 = _mm256_setzero_pd();
+			
+			ci1j0 = _mm256_setzero_pd();
+			ci1j1 = _mm256_setzero_pd();
+			
+			for (k=0; k<dimk; k++,pbkj+=dimj*2,paki+=dimi*2) {
+				aki0 = _mm256_set_pd(*(paki+1), *(paki+0), *(paki+1), *(paki+0));
+				aki1 = _mm256_set_pd(*(paki+3), *(paki+2), *(paki+3), *(paki+2));
+				
+				bkj = _mm256_loadu_pd(pbkj   );
+				tmp00 = _mm256_shuffle_pd(aki0, aki0, 0xF);
+				tmp10 = _mm256_shuffle_pd(aki1, aki1, 0xF);
+				tmp01 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp11 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp00 = _mm256_mul_pd(tmp00, tmp01);
+				tmp10 = _mm256_mul_pd(tmp10, tmp11);
+				tmp01 = _mm256_shuffle_pd(aki0, aki0, 0x0);
+				tmp11 = _mm256_shuffle_pd(aki1, aki1, 0x0);
+				tmp00 = _mm256_fmaddsub_pd(tmp01, bkj, tmp00);
+				tmp01 = _mm256_fmaddsub_pd(tmp11, bkj, tmp10);
+				ci0j0 = _mm256_add_pd(ci0j0, tmp00);
+				ci1j0 = _mm256_add_pd(ci1j0, tmp01);
+				
+				bkj = _mm256_maskload_pd(pbkj+4,mask);
+				tmp00 = _mm256_shuffle_pd(aki0, aki0, 0xF);
+				tmp10 = _mm256_shuffle_pd(aki1, aki1, 0xF);
+				tmp01 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp11 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp00 = _mm256_mul_pd(tmp00, tmp01);
+				tmp10 = _mm256_mul_pd(tmp10, tmp11);
+				tmp01 = _mm256_shuffle_pd(aki0, aki0, 0x0);
+				tmp11 = _mm256_shuffle_pd(aki1, aki1, 0x0);
+				tmp00 = _mm256_fmaddsub_pd(tmp01, bkj, tmp00);
+				tmp01 = _mm256_fmaddsub_pd(tmp11, bkj, tmp10);
+				ci0j1 = _mm256_add_pd(ci0j1, tmp00);
+				ci1j1 = _mm256_add_pd(ci1j1, tmp01);
+			}
+			if(!is_trans){
+				_mm256_storeu_pd(c+i*dimj*2   , ci0j0);
+				_mm256_maskstore_pd(c+i*dimj*2+4, mask, ci0j1); 
+				
+				_mm256_storeu_pd(c+(i+1)*dimj*2   , ci1j0);
+				_mm256_maskstore_pd(c+(i+1)*dimj*2+4, mask, ci1j1); 
+			}else{
+				//temporary use aki0, aki1 and mask
+				aki0 = _mm256_shuffle_pd(ci0j0, ci1j0, 0);
+				aki1 = _mm256_shuffle_pd(ci0j0, ci1j0, -1);
+				_mm256_storeu2_m128d(conv_addr_trans2normal(i,2), conv_addr_trans2normal(i,0), aki0);
+				_mm256_storeu2_m128d(conv_addr_trans2normal(i,3), conv_addr_trans2normal(i,1), aki1);
+
+				aki0 = _mm256_shuffle_pd(ci0j1, ci1j1, 0);
+				aki1 = _mm256_shuffle_pd(ci0j1, ci1j1, -1);
+				switch(numj){
+					case  8:
+						_mm256_storeu2_m128d(conv_addr_trans2normal(i,6), conv_addr_trans2normal(i,4), aki0);
+						_mm256_storeu2_m128d(conv_addr_trans2normal(i,7), conv_addr_trans2normal(i,5), aki1);
+						mask = _mm256_set_epi32(-1,-1,-1,-1,-1,-1,-1,-1);	//reset mask
+						break;
+					case  7:
+						mask = _mm256_set_epi64x(0, 0, -1, -1);
+						_mm256_storeu2_m128d(conv_addr_trans2normal(i,6), conv_addr_trans2normal(i,4), aki0);
+						_mm256_maskstore_pd(conv_addr_trans2normal(i,5), mask, aki1);
+						mask = _mm256_set_epi32( 0, 0,-1,-1,-1,-1,-1,-1);	//reset mask
+						break;
+					case  6:
+						mask = _mm256_set_epi64x(0, 0, -1, -1);
+						_mm256_maskstore_pd(conv_addr_trans2normal(i,4), mask, aki0);
+						_mm256_maskstore_pd(conv_addr_trans2normal(i,5), mask, aki1);
+						mask = _mm256_set_epi32( 0, 0, 0, 0,-1,-1,-1,-1);	//reset mask
+						break;
+					case  5:
+						mask = _mm256_set_epi64x(0, 0, -1, -1);
+						_mm256_maskstore_pd(conv_addr_trans2normal(i,4), mask, aki0);
+						mask = _mm256_set_epi32( 0, 0, 0, 0, 0, 0,-1,-1);	//reset mask
+						break;
+				}
+			}
+
+		}
+			
+		if (numi&0x1) {
+			const double* __restrict__ pbkj = b;
+			const double* __restrict__ paki = a+i*2;
+			ci0j0 = _mm256_setzero_pd();
+			ci0j1 = _mm256_setzero_pd();
+			
+			for (k=0; k<dimk; k++,pbkj+=dimj*2,paki+=dimi*2) {
+				aki0 = _mm256_set_pd(*(paki+1), *(paki+0), *(paki+1), *(paki+0));
+				
+				bkj = _mm256_loadu_pd(pbkj   );
+				tmp00 = _mm256_shuffle_pd(aki0, aki0, 0xF);
+				tmp01 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp00 = _mm256_mul_pd(tmp00, tmp01);
+				tmp01 = _mm256_shuffle_pd(aki0, aki0, 0x0);
+				tmp00 = _mm256_fmaddsub_pd(tmp01, bkj, tmp00);
+				ci0j0 = _mm256_add_pd(ci0j0, tmp00);
+
+				bkj = _mm256_maskload_pd(pbkj+4,mask);
+				tmp00 = _mm256_shuffle_pd(aki0, aki0, 0xF);
+				tmp01 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp00 = _mm256_mul_pd(tmp00, tmp01);
+				tmp01 = _mm256_shuffle_pd(aki0, aki0, 0x0);
+				tmp00 = _mm256_fmaddsub_pd(tmp01, bkj, tmp00);
+				ci0j1 = _mm256_add_pd(ci0j1, tmp00);
+			}
+
+			if(!is_trans){
+				_mm256_storeu_pd(c+i*dimj*2   , ci0j0);
+				_mm256_maskstore_pd(c+i*dimj*2+4, mask, ci0j1); 
+			}else{
+				_mm256_storeu_pd(tmp, ci0j0);
+				c[0*dimi+i] = tmp[0];
+				c[1*dimi+i] = tmp[1];
+				c[2*dimi+i] = tmp[2];
+				c[3*dimi+i] = tmp[3];
+
+				_mm256_storeu_pd(tmp, ci0j1);
+				switch(numj){
+				case 8:
+					c[7*dimi+i] = tmp[3];
+				case 7:
+					c[6*dimi+i] = tmp[2];
+				case 6:
+					c[5*dimi+i] = tmp[1];
+				case 5:
+					c[4*dimi+i] = tmp[0];
+				}
+			}
+		}
+
+		break;
+		
+	case 4:
+	case 3:
+	case 2:
+	case 1:
+		if      (numj == 4) mask = _mm256_set_epi32(-1,-1,-1,-1,-1,-1,-1,-1);
+		else if (numj == 3) mask = _mm256_set_epi32( 0, 0,-1,-1,-1,-1,-1,-1);
+		else if (numj == 2) mask = _mm256_set_epi32( 0, 0, 0, 0,-1,-1,-1,-1);
+		else if (numj == 1) mask = _mm256_set_epi32( 0, 0, 0, 0, 0, 0,-1,-1);
+
+		for (i=0; i<dimi2; i+=2,ci+=dimj2) {
+			const double* __restrict__ pbkj = b;
+			const double* __restrict__ paki = a+i*2;
+			ci0j0 = _mm256_setzero_pd();
+			ci1j0 = _mm256_setzero_pd();
+			
+			for (k=0; k<dimk; k++,pbkj+=dimj*2,paki+=dimi*2) {
+				aki0 = _mm256_set_pd(*(paki+1), *(paki+0), *(paki+1), *(paki+0));
+				aki1 = _mm256_set_pd(*(paki+3), *(paki+2), *(paki+3), *(paki+2));
+				
+				bkj = _mm256_maskload_pd(pbkj, mask);
+				tmp00 = _mm256_shuffle_pd(aki0, aki0, 0xF);
+				tmp10 = _mm256_shuffle_pd(aki1, aki1, 0xF);
+				tmp01 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp11 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp00 = _mm256_mul_pd(tmp00, tmp01);
+				tmp10 = _mm256_mul_pd(tmp10, tmp11);
+				tmp01 = _mm256_shuffle_pd(aki0, aki0, 0x0);
+				tmp11 = _mm256_shuffle_pd(aki1, aki1, 0x0);
+				tmp00 = _mm256_fmaddsub_pd(tmp01, bkj, tmp00);
+				tmp01 = _mm256_fmaddsub_pd(tmp11, bkj, tmp10);
+				ci0j0 = _mm256_add_pd(ci0j0, tmp00);
+				ci1j0 = _mm256_add_pd(ci1j0, tmp01);
+			}
+			if(!is_trans){
+				_mm256_maskstore_pd(c+i*dimj*2    , mask, ci0j0);
+				_mm256_maskstore_pd(c+(i+1)*dimj*2, mask, ci1j0);
+			}else{
+				//temporary use aki0, aki1 and mask
+				aki0 = _mm256_shuffle_pd(ci0j0, ci1j0, 0);
+				aki1 = _mm256_shuffle_pd(ci0j0, ci1j0, -1);
+				switch(numj){
+					case  4:
+						_mm256_storeu2_m128d(conv_addr_trans2normal(i,2), conv_addr_trans2normal(i,0), aki0);
+						_mm256_storeu2_m128d(conv_addr_trans2normal(i,3), conv_addr_trans2normal(i,1), aki1);
+						break;
+					case  3:
+						mask = _mm256_set_epi64x(0, 0, -1, -1);
+						_mm256_storeu2_m128d(conv_addr_trans2normal(i,2), conv_addr_trans2normal(i,0), aki0);
+						_mm256_maskstore_pd(conv_addr_trans2normal(i,1), mask, aki1);
+						mask = _mm256_set_epi32( 0, 0,-1,-1,-1,-1,-1,-1);	//reset mask
+						break;
+					case  2:
+
+						mask = _mm256_set_epi64x(0, 0, -1, -1);
+						_mm256_maskstore_pd(conv_addr_trans2normal(i,0), mask, aki0);
+						_mm256_maskstore_pd(conv_addr_trans2normal(i,1), mask, aki1);
+						mask = _mm256_set_epi32( 0, 0, 0, 0,-1,-1,-1,-1);	//reset mask
+						break;
+					case  1:
+						mask = _mm256_set_epi64x(0, 0, -1, -1);
+						_mm256_maskstore_pd(conv_addr_trans2normal(i,0), mask, aki0);
+						mask = _mm256_set_epi32( 0, 0, 0, 0, 0, 0,-1,-1);	//reset mask
+						break;
+				}
+			}
+		}
+			
+		if (numi&0x1) {
+			const double* __restrict__ pbkj = b;
+			const double* __restrict__ paki = a+i*2;
+			ci0j0 = _mm256_setzero_pd();
+			for (k=0; k<dimk; k++,pbkj+=dimj*2,paki+=dimi*2) {
+				aki0 = _mm256_set_pd(*(paki+1), *(paki), *(paki+1), *(paki));
+
+				bkj = _mm256_maskload_pd(pbkj, mask);
+				tmp00 = _mm256_shuffle_pd(aki0, aki0, 0xF);
+				tmp01 = _mm256_shuffle_pd(bkj, bkj, 0x5);
+				tmp00 = _mm256_mul_pd(tmp00, tmp01);
+				tmp01 = _mm256_shuffle_pd(aki0, aki0, 0x0);
+				tmp00 = _mm256_fmaddsub_pd(tmp01, bkj, tmp00);
+				ci0j0 = _mm256_add_pd(ci0j0, tmp00);
+			}
+			if(!is_trans){
+				_mm256_maskstore_pd(c+i*dimj*2    , mask, ci0j0);
+			}else{
+				_mm256_storeu_pd(tmp, ci0j0);
+				switch(numj){
+				case 4:
+					c[3*dimi+i] = tmp[3];
+				case 3:
+					c[2*dimi+i] = tmp[2];
+				case 2:
+					c[1*dimi+i] = tmp[1];
+				case 1:
+					c[0*dimi+i] = tmp[0];
+				}
+			}
+		}
+		break;
+
+	default:
+		/* for (i=0; i<dimi; i++) { */
+		/*     for (k=0; k<dimk; k++) { */
+		/*         double aki = a[k*dimi+i]; */
+		/*         for (j=0; j<numj; j++) { */
+		/*             c[i*dimj+j] += aki*b[k*dimj+j]; */
+		/*         } */
+		/*     } */
+		/* } */
+		printf("HOW DID WE GET HERE?\n");
+		break;
+	}
+}
+
 //Real x Real(AVX)
     template<>
 void mTxmq(long dimi, long dimj, long dimk,
@@ -2420,6 +3116,48 @@ void mTxmq(long dimi, long dimj, long dimk,
 
 		}
 
+	}while(nj && ni);
+}
+
+//Complex x Complex(AVX)
+    template<>
+void mTxmq(long dimi, long dimj, long dimk,
+           double_complex * __restrict__ c, const double_complex * __restrict__ a, const double_complex * __restrict__ b) {
+
+	int nj = dimj*2;
+	int ni = dimi; //dimi*2?
+	do{
+        int numj = (nj>16) ? 16 : nj;
+        int numi = (ni>16) ? 16 : ni;
+		double_complex* __restrict__ ci = c;
+
+		//if(dimj % 16 >= 12 || dimi % 16 >= 12){
+		if(1){
+			//if((dimj-1) % 16 >= (dimi-1) % 16 && ((dimj % 4 == 0) || (dimi % 4 != 0))){
+			if(1){
+				mTxmq_core(false, dimi, dimj, dimk, ci, a, b, ni, numj);
+				c += numj/2;
+				b += numj/2;
+				nj -= numj;
+			}else{
+				mTxmq_core(true, dimj, dimi, dimk, ci, b, a, nj, numi);
+				c += dimj*numi;
+				a += numi;
+				ni -= numi;
+			}
+		}else{
+			if((numj-1) % 24 >= (numi-1) % 24 && ((numj % 4 == 0) || (numi % 4 != 0))){
+				mTxmq_core(false, dimi, dimj, dimk, ci, a, b, ni, numj);
+				c += numj;
+				b += numj;
+				nj -= numj;
+			}else{
+				mTxmq_core(true, dimj, dimi, dimk, ci, b, a, nj, numi);
+				c += dimj*numi;
+				a += numi;
+				ni -= numi;
+			}
+		}
 	}while(nj && ni);
 }
 
@@ -2616,1138 +3354,6 @@ void mTxmq(long dimi, long dimj, long dimk,
 #endif // defined(X86_32) || defined(X86_64)
 
 
-/* all preprocessor ifdef-endif pairs are closed */
-
-
-#if defined(X86_64)  && !defined(DISABLE_SSE3)
-namespace madness {
-    template <>
-    void mTxmq(const long dimi, const long dimj, const long dimk,
-               double_complex* restrict c, const double_complex* a, const double_complex* b) {
-
-        //PROFILE_BLOCK(mTxmq_complex_asm);
-        const long dimi16 = dimi<<4;
-        const long dimj16 = dimj<<4;
-
-#define ZERO(c) "pxor " #c "," #c ";\n"
-
-#ifdef AMD_QUADCORE_TUNE
-#  define ENTRY(loop) "mov %q0,%%r9;  prefetcht0 (%%r9); mov %q1, %%r10; mov %q4,%%r11;.align 32;"#loop": "
-#  define LOADA   "movaps (%%r9),%%xmm0; movaps %%xmm0, %%xmm1; shufpd $1,%%xmm1,%%xmm1;  mov %%r10,%%r8; add %q2,%%r9; add %q3,%%r10; prefetcht0 (%%r9);\n"
-#  define DOIT(c) "movddup (%%r8),%%xmm2; mulpd %%xmm0,%%xmm2; addpd %%xmm2,"#c"; movddup 8(%%r8),%%xmm2; mulpd %%xmm1,%%xmm2; addsubpd %%xmm2,"#c"; \n"
-#else
-#  ifndef ON_A_MAC
-#    define ENTRY(loop) "mov %q0,%%r9; mov %q1, %%r10; mov %q4,%%r11;.align 32;"#loop": "
-#  else
-#    define ENTRY(loop) "mov %q0,%%r9; mov %q1, %%r10; mov %q4,%%r11;"#loop": "
-#  endif
-#  define LOADA   "movddup  (%%r9), %%xmm0; mov %%r10,%%r8; movddup 8(%%r9), %%xmm1; add %q2,%%r9; add %q3,%%r10; prefetcht0 (%%r9);\n"
-#  define DOIT(c) "movaps (%%r8),%%xmm2; movaps %%xmm2,%%xmm3; mulpd %%xmm0,%%xmm2; addpd %%xmm2,"#c"; shufpd $1,%%xmm3,%%xmm3; mulpd %%xmm1,%%xmm3; addsubpd %%xmm3, "#c"; \n"
-#endif
-
-// see comment in mtxmq_asm.S about movaps vs. movntps
-#  define STORE(c) "movaps " #c ", (%%r8); add $16,%%r8;\n"
-
-#define NEXT(loop) "sub $1,%%r11; jnz "#loop";"
-#define INCB    "add $16,%%r8;\n"
-
-        const long jtile = 12;
-        const double_complex* asave = a;
-        for (long jlo=0; jlo<dimj; jlo+=jtile,c+=jtile,b+=jtile) {
-            long nj = std::min(dimj-jlo,jtile);
-            double_complex* restrict ci = c;
-            a = asave;
-            for (long i=0; i<dimi; ++i,ci+=dimj,++a) {
-                const double_complex *ai = a;
-                const double_complex *bk = b;
-                switch (nj) {
-                case 1:
-                    __asm__ __volatile__ (
-                                          ZERO(%%xmm4)
-
-                                          ENTRY(.KLOOP1)
-                                          LOADA
-                                          DOIT(%%xmm4)
-                                          NEXT(.KLOOP1)
-
-                                          "mov %q5, %%r8;\n"
-                                          STORE(%%xmm4)
-                                          :
-                                          : "r"(ai),"r"(bk),"r"(dimi16),"r"(dimj16),"r"(dimk), "r"(ci)
-                                          : "r8", "r9", "r10", "r11", "memory"
-                                          );
-                    break;
-
-                case 2:
-                    __asm__ __volatile__ (
-                                          ZERO(%%xmm4)
-                                          ZERO(%%xmm5)
-
-                                          ENTRY(.KLOOP2)
-                                          LOADA
-                                          DOIT(%%xmm4)  INCB
-                                          DOIT(%%xmm5)
-                                          NEXT(.KLOOP2)
-
-                                          "mov %q5, %%r8;\n"
-                                          STORE(%%xmm4)
-                                          STORE(%%xmm5)
-                                          :
-                                          : "r"(ai),"r"(bk),"r"(dimi16),"r"(dimj16),"r"(dimk), "r"(ci)
-                                          : "r8", "r9", "r10", "r11", "memory"
-                                          );
-                    break;
-
-                case 3:
-                    __asm__ __volatile__ (
-                                          ZERO(%%xmm4)
-                                          ZERO(%%xmm5)
-                                          ZERO(%%xmm6)
-
-                                          ENTRY(.KLOOP3)
-                                          LOADA
-                                          DOIT(%%xmm4)  INCB
-                                          DOIT(%%xmm5)  INCB
-                                          DOIT(%%xmm6)
-                                          NEXT(.KLOOP3)
-
-                                          "mov %q5, %%r8;\n"
-                                          STORE(%%xmm4)
-                                          STORE(%%xmm5)
-                                          STORE(%%xmm6)
-                                          :
-                                          : "r"(ai),"r"(bk),"r"(dimi16),"r"(dimj16),"r"(dimk), "r"(ci)
-                                          : "r8", "r9", "r10", "r11", "memory"
-                                          );
-                    break;
-
-                case 4:
-                    __asm__ __volatile__ (
-                                          ZERO(%%xmm4)
-                                          ZERO(%%xmm5)
-                                          ZERO(%%xmm6)
-                                          ZERO(%%xmm7)
-
-                                          ENTRY(.KLOOP4)
-                                          LOADA
-                                          DOIT(%%xmm4)  INCB
-                                          DOIT(%%xmm5)  INCB
-                                          DOIT(%%xmm6)  INCB
-                                          DOIT(%%xmm7)
-                                          NEXT(.KLOOP4)
-
-                                          "mov %q5, %%r8;\n"
-                                          STORE(%%xmm4)
-                                          STORE(%%xmm5)
-                                          STORE(%%xmm6)
-                                          STORE(%%xmm7)
-                                          :
-                                          : "r"(ai),"r"(bk),"r"(dimi16),"r"(dimj16),"r"(dimk), "r"(ci)
-                                          : "r8", "r9", "r10", "r11", "memory"
-                                          );
-                    break;
-
-                case 5:
-                    __asm__ __volatile__ (
-                                          ZERO(%%xmm4)
-                                          ZERO(%%xmm5)
-                                          ZERO(%%xmm6)
-                                          ZERO(%%xmm7)
-                                          ZERO(%%xmm8)
-
-                                          ENTRY(.KLOOP5)
-                                          LOADA
-                                          DOIT(%%xmm4)  INCB
-                                          DOIT(%%xmm5)  INCB
-                                          DOIT(%%xmm6)  INCB
-                                          DOIT(%%xmm7)  INCB
-                                          DOIT(%%xmm8)
-                                          NEXT(.KLOOP5)
-
-                                          "mov %q5, %%r8;\n"
-                                          STORE(%%xmm4)
-                                          STORE(%%xmm5)
-                                          STORE(%%xmm6)
-                                          STORE(%%xmm7)
-                                          STORE(%%xmm8)
-                                          :
-                                          : "r"(ai),"r"(bk),"r"(dimi16),"r"(dimj16),"r"(dimk), "r"(ci)
-                                          : "r8", "r9", "r10", "r11", "memory"
-                                          );
-                    break;
-
-                case 6:
-                    __asm__ __volatile__ (
-                                          ZERO(%%xmm4)
-                                          ZERO(%%xmm5)
-                                          ZERO(%%xmm6)
-                                          ZERO(%%xmm7)
-                                          ZERO(%%xmm8)
-                                          ZERO(%%xmm9)
-
-                                          ENTRY(.KLOOP6)
-                                          LOADA
-                                          DOIT(%%xmm4)  INCB
-                                          DOIT(%%xmm5)  INCB
-                                          DOIT(%%xmm6)  INCB
-                                          DOIT(%%xmm7)  INCB
-                                          DOIT(%%xmm8)  INCB
-                                          DOIT(%%xmm9)
-                                          NEXT(.KLOOP6)
-
-                                          "mov %q5, %%r8;\n"
-                                          STORE(%%xmm4)
-                                          STORE(%%xmm5)
-                                          STORE(%%xmm6)
-                                          STORE(%%xmm7)
-                                          STORE(%%xmm8)
-                                          STORE(%%xmm9)
-                                          :
-                                          : "r"(ai),"r"(bk),"r"(dimi16),"r"(dimj16),"r"(dimk), "r"(ci)
-                                          : "r8", "r9", "r10", "r11", "memory"
-                                          );
-
-                    break;
-
-                case 7:
-                    __asm__ __volatile__ (
-                                          ZERO(%%xmm4)
-                                          ZERO(%%xmm5)
-                                          ZERO(%%xmm6)
-                                          ZERO(%%xmm7)
-                                          ZERO(%%xmm8)
-                                          ZERO(%%xmm9)
-                                          ZERO(%%xmm10)
-
-                                          ENTRY(.KLOOP7)
-                                          LOADA
-                                          DOIT(%%xmm4)  INCB
-                                          DOIT(%%xmm5)  INCB
-                                          DOIT(%%xmm6)  INCB
-                                          DOIT(%%xmm7)  INCB
-                                          DOIT(%%xmm8)  INCB
-                                          DOIT(%%xmm9)  INCB
-                                          DOIT(%%xmm10)
-                                          NEXT(.KLOOP7)
-
-                                          "mov %q5, %%r8;\n"
-                                          STORE(%%xmm4)
-                                          STORE(%%xmm5)
-                                          STORE(%%xmm6)
-                                          STORE(%%xmm7)
-                                          STORE(%%xmm8)
-                                          STORE(%%xmm9)
-                                          STORE(%%xmm10)
-                                          :
-                                          : "r"(ai),"r"(bk),"r"(dimi16),"r"(dimj16),"r"(dimk), "r"(ci)
-                                          : "r8", "r9", "r10", "r11", "memory"
-                                          );
-                    break;
-
-                case 8:
-                    __asm__ __volatile__ (
-                                          ZERO(%%xmm4)
-                                          ZERO(%%xmm5)
-                                          ZERO(%%xmm6)
-                                          ZERO(%%xmm7)
-                                          ZERO(%%xmm8)
-                                          ZERO(%%xmm9)
-                                          ZERO(%%xmm10)
-                                          ZERO(%%xmm11)
-
-                                          ENTRY(.KLOOP8)
-                                          LOADA
-                                          DOIT(%%xmm4)  INCB
-                                          DOIT(%%xmm5)  INCB
-                                          DOIT(%%xmm6)  INCB
-                                          DOIT(%%xmm7)  INCB
-                                          DOIT(%%xmm8)  INCB
-                                          DOIT(%%xmm9)  INCB
-                                          DOIT(%%xmm10) INCB
-                                          DOIT(%%xmm11)
-                                          NEXT(.KLOOP8)
-
-                                          "mov %q5, %%r8;\n"
-                                          STORE(%%xmm4)
-                                          STORE(%%xmm5)
-                                          STORE(%%xmm6)
-                                          STORE(%%xmm7)
-                                          STORE(%%xmm8)
-                                          STORE(%%xmm9)
-                                          STORE(%%xmm10)
-                                          STORE(%%xmm11)
-                                          :
-                                          : "r"(ai),"r"(bk),"r"(dimi16),"r"(dimj16),"r"(dimk), "r"(ci)
-                                          : "r8", "r9", "r10", "r11", "memory"
-                                          );
-                    break;
-
-                case 9:
-                    __asm__ __volatile__ (
-                                          ZERO(%%xmm4)
-                                          ZERO(%%xmm5)
-                                          ZERO(%%xmm6)
-                                          ZERO(%%xmm7)
-                                          ZERO(%%xmm8)
-                                          ZERO(%%xmm9)
-                                          ZERO(%%xmm10)
-                                          ZERO(%%xmm11)
-                                          ZERO(%%xmm12)
-
-                                          ENTRY(.KLOOP9)
-                                          LOADA
-                                          DOIT(%%xmm4)  INCB
-                                          DOIT(%%xmm5)  INCB
-                                          DOIT(%%xmm6)  INCB
-                                          DOIT(%%xmm7)  INCB
-                                          DOIT(%%xmm8)  INCB
-                                          DOIT(%%xmm9)  INCB
-                                          DOIT(%%xmm10) INCB
-                                          DOIT(%%xmm11) INCB
-                                          DOIT(%%xmm12)
-                                          NEXT(.KLOOP9)
-
-                                          "mov %q5, %%r8;\n"
-                                          STORE(%%xmm4)
-                                          STORE(%%xmm5)
-                                          STORE(%%xmm6)
-                                          STORE(%%xmm7)
-                                          STORE(%%xmm8)
-                                          STORE(%%xmm9)
-                                          STORE(%%xmm10)
-                                          STORE(%%xmm11)
-                                          STORE(%%xmm12)
-                                          :
-                                          : "r"(ai),"r"(bk),"r"(dimi16),"r"(dimj16),"r"(dimk), "r"(ci)
-                                          : "r8", "r9", "r10", "r11", "memory"
-                                          );
-                    break;
-
-                case 10:
-                    __asm__ __volatile__ (
-                                          ZERO(%%xmm4)
-                                          ZERO(%%xmm5)
-                                          ZERO(%%xmm6)
-                                          ZERO(%%xmm7)
-                                          ZERO(%%xmm8)
-                                          ZERO(%%xmm9)
-                                          ZERO(%%xmm10)
-                                          ZERO(%%xmm11)
-                                          ZERO(%%xmm12)
-                                          ZERO(%%xmm13)
-
-                                          ENTRY(.KLOOP10)
-                                          LOADA
-                                          DOIT(%%xmm4)  INCB
-                                          DOIT(%%xmm5)  INCB
-                                          DOIT(%%xmm6)  INCB
-                                          DOIT(%%xmm7)  INCB
-                                          DOIT(%%xmm8)  INCB
-                                          DOIT(%%xmm9)  INCB
-                                          DOIT(%%xmm10) INCB
-                                          DOIT(%%xmm11) INCB
-                                          DOIT(%%xmm12) INCB
-                                          DOIT(%%xmm13)
-                                          NEXT(.KLOOP10)
-
-                                          "mov %q5, %%r8;\n"
-                                          STORE(%%xmm4)
-                                          STORE(%%xmm5)
-                                          STORE(%%xmm6)
-                                          STORE(%%xmm7)
-                                          STORE(%%xmm8)
-                                          STORE(%%xmm9)
-                                          STORE(%%xmm10)
-                                          STORE(%%xmm11)
-                                          STORE(%%xmm12)
-                                          STORE(%%xmm13)
-                                          :
-                                          : "r"(ai),"r"(bk),"r"(dimi16),"r"(dimj16),"r"(dimk), "r"(ci)
-                                          : "r8", "r9", "r10", "r11", "memory"
-                                          );
-                    break;
-
-                case 11:
-                    __asm__ __volatile__ (
-                                          ZERO(%%xmm4)
-                                          ZERO(%%xmm5)
-                                          ZERO(%%xmm6)
-                                          ZERO(%%xmm7)
-                                          ZERO(%%xmm8)
-                                          ZERO(%%xmm9)
-                                          ZERO(%%xmm10)
-                                          ZERO(%%xmm11)
-                                          ZERO(%%xmm12)
-                                          ZERO(%%xmm13)
-                                          ZERO(%%xmm14)
-
-                                          ENTRY(.KLOOP11)
-                                          LOADA
-                                          DOIT(%%xmm4)  INCB
-                                          DOIT(%%xmm5)  INCB
-                                          DOIT(%%xmm6)  INCB
-                                          DOIT(%%xmm7)  INCB
-                                          DOIT(%%xmm8)  INCB
-                                          DOIT(%%xmm9)  INCB
-                                          DOIT(%%xmm10) INCB
-                                          DOIT(%%xmm11) INCB
-                                          DOIT(%%xmm12) INCB
-                                          DOIT(%%xmm13) INCB
-                                          DOIT(%%xmm14)
-                                          NEXT(.KLOOP11)
-
-                                          "mov %q5, %%r8;\n"
-                                          STORE(%%xmm4)
-                                          STORE(%%xmm5)
-                                          STORE(%%xmm6)
-                                          STORE(%%xmm7)
-                                          STORE(%%xmm8)
-                                          STORE(%%xmm9)
-                                          STORE(%%xmm10)
-                                          STORE(%%xmm11)
-                                          STORE(%%xmm12)
-                                          STORE(%%xmm13)
-                                          STORE(%%xmm14)
-                                          :
-                                          : "r"(ai),"r"(bk),"r"(dimi16),"r"(dimj16),"r"(dimk), "r"(ci)
-                                          : "r8", "r9", "r10", "r11", "memory"
-                                          );
-                    break;
-
-                case 12:
-                    __asm__ __volatile__ (
-                                          ZERO(%%xmm4)
-                                          ZERO(%%xmm5)
-                                          ZERO(%%xmm6)
-                                          ZERO(%%xmm7)
-                                          ZERO(%%xmm8)
-                                          ZERO(%%xmm9)
-                                          ZERO(%%xmm10)
-                                          ZERO(%%xmm11)
-                                          ZERO(%%xmm12)
-                                          ZERO(%%xmm13)
-                                          ZERO(%%xmm14)
-                                          ZERO(%%xmm15)
-
-                                          ENTRY(.KLOOP12)
-                                          LOADA
-                                          DOIT(%%xmm4)  INCB
-                                          DOIT(%%xmm5)  INCB
-                                          DOIT(%%xmm6)  INCB
-                                          DOIT(%%xmm7)  INCB
-                                          DOIT(%%xmm8)  INCB
-                                          DOIT(%%xmm9)  INCB
-                                          DOIT(%%xmm10) INCB
-                                          DOIT(%%xmm11) INCB
-                                          DOIT(%%xmm12) INCB
-                                          DOIT(%%xmm13) INCB
-                                          DOIT(%%xmm14) INCB
-                                          DOIT(%%xmm15)
-                                          NEXT(.KLOOP12)
-
-                                          "mov %q5, %%r8;\n"
-                                          STORE(%%xmm4)
-                                          STORE(%%xmm5)
-                                          STORE(%%xmm6)
-                                          STORE(%%xmm7)
-                                          STORE(%%xmm8)
-                                          STORE(%%xmm9)
-                                          STORE(%%xmm10)
-                                          STORE(%%xmm11)
-                                          STORE(%%xmm12)
-                                          STORE(%%xmm13)
-                                          STORE(%%xmm14)
-                                          STORE(%%xmm15)
-                                          :
-                                          : "r"(ai),"r"(bk),"r"(dimi16),"r"(dimj16),"r"(dimk), "r"(ci)
-                                          : "r8", "r9", "r10", "r11", "memory"
-                                          );
-                    break;
-                }
-            }
-        }
-    }
-
-#ifndef __INTEL_COMPILER
-    template <>
-    void mTxmq(const long dimi, const long dimj, const long dimk,
-               double_complex* restrict c, const double_complex* a, const double* b)
-    {
-      const long itile = 14;
-      for (long ilo = 0; ilo < dimi; ilo += itile, a+=itile, c+=itile*dimj)
-      {
-        long ni = dimi - ilo;
-        ni = (ni >= itile) ? itile : ni;
-        if (ni == 1)
-        {
-          for (long j = 0; j < dimj; ++j)
-          {
-            __asm__ volatile
-            (
-                // save registers to be 'clobbered'
-                "push %0; push %1; push %4; push %5;\n "
-                // zero out mmx registers
-                "pxor %%xmm2,%%xmm2;\n"
-
-                "0:\n "
-                // load the 'b' part into %1 and update pointer
-                "movddup   (%1), %%xmm0; add %3,%1;\n"
-                // begin i-tile
-                "movapd    (%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm2; add %2,%0;\n"
-                "sub $1,%4; jnz 0b;\n"
-
-                "movapd   %%xmm2, (%5);\n"
-
-                "pop %5; pop %4; pop %1; pop %0;\n"
-
-                :
-                : "r"(a), "r"(b + j), "r"(dimi<<4), "r"(dimj<<3), "r"(dimk), "r"(c + j), "r"(dimj<<4)
-                :
-            );
-          }
-        }
-        else if (ni == 2)
-        {
-          for (long j = 0; j < dimj; ++j)
-          {
-            __asm__ volatile
-            (
-                // save registers to be 'clobbered'
-                "push %0; push %1; push %4; push %5;\n "
-                // zero out mmx registers
-                "pxor %%xmm2,%%xmm2;\n"
-                "pxor %%xmm3,%%xmm3;\n"
-
-                "0:\n "
-                // load the 'b' part into %1 and update pointer
-                "movddup   (%1), %%xmm0; add %3,%1;\n"
-                // begin i-tile
-                "movapd    (%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm2;\n"
-                "movapd  16(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm3; add %2,%0;\n"
-                "sub $1,%4; jnz 0b;\n"
-
-                "movapd   %%xmm2, (%5); add %6,%5;\n"
-                "movapd   %%xmm3, (%5);\n"
-
-                "pop %5; pop %4; pop %1; pop %0;\n"
-
-                :
-                : "r"(a), "r"(b + j), "r"(dimi<<4), "r"(dimj<<3), "r"(dimk), "r"(c + j), "r"(dimj<<4)
-                :
-            );
-          }
-        }
-        else if (ni == 3)
-        {
-          for (long j = 0; j < dimj; ++j)
-          {
-            __asm__ volatile
-            (
-                // save registers to be 'clobbered'
-                "push %0; push %1; push %4; push %5;\n "
-                // zero out mmx registers
-                "pxor %%xmm2,%%xmm2;\n"
-                "pxor %%xmm3,%%xmm3;\n"
-                "pxor %%xmm4,%%xmm4;\n"
-
-                "0:\n "
-                // load the 'b' part into %1 and update pointer
-                "movddup   (%1), %%xmm0; add %3,%1;\n"
-                // begin i-tile
-                "movapd    (%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm2;\n"
-                "movapd  16(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm3;\n"
-                "movapd  32(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm4; add %2,%0;\n"
-                "sub $1,%4; jnz 0b;\n"
-
-                "movapd   %%xmm2, (%5); add %6,%5;\n"
-                "movapd   %%xmm3, (%5); add %6,%5;\n"
-                "movapd   %%xmm4, (%5);\n"
-
-                "pop %5; pop %4; pop %1; pop %0;\n"
-
-                :
-                : "r"(a), "r"(b + j), "r"(dimi<<4), "r"(dimj<<3), "r"(dimk), "r"(c + j), "r"(dimj<<4)
-                :
-            );
-          }
-        }
-        else if (ni == 4)
-        {
-          for (long j = 0; j < dimj; ++j)
-          {
-            __asm__ volatile
-            (
-                // save registers to be 'clobbered'
-                "push %0; push %1; push %4; push %5;\n "
-                // zero out mmx registers
-                "pxor %%xmm2,%%xmm2;\n"
-                "pxor %%xmm3,%%xmm3;\n"
-                "pxor %%xmm4,%%xmm4;\n"
-                "pxor %%xmm5,%%xmm5;\n"
-
-                "0:\n "
-                // load the 'b' part into %1 and update pointer
-                "movddup   (%1), %%xmm0; add %3,%1;\n"
-                // begin i-tile
-                "movapd    (%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm2;\n"
-                "movapd  16(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm3;\n"
-                "movapd  32(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm4;\n"
-                "movapd  48(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm5; add %2,%0;\n"
-                "sub $1,%4; jnz 0b;\n"
-
-                "movapd   %%xmm2, (%5); add %6,%5;\n"
-                "movapd   %%xmm3, (%5); add %6,%5;\n"
-                "movapd   %%xmm4, (%5); add %6,%5;\n"
-                "movapd   %%xmm5, (%5);\n"
-
-                "pop %5; pop %4; pop %1; pop %0;\n"
-
-                :
-                : "r"(a), "r"(b + j), "r"(dimi<<4), "r"(dimj<<3), "r"(dimk), "r"(c + j), "r"(dimj<<4)
-                :
-            );
-          }
-        }
-        if (ni == 5)
-        {
-          for (long j = 0; j < dimj; ++j)
-          {
-            __asm__ volatile
-            (
-                // save registers to be 'clobbered'
-                "push %0; push %1; push %4; push %5;\n "
-                // zero out mmx registers
-                "pxor %%xmm2,%%xmm2;\n"
-                "pxor %%xmm3,%%xmm3;\n"
-                "pxor %%xmm4,%%xmm4;\n"
-                "pxor %%xmm5,%%xmm5;\n"
-                "pxor %%xmm6,%%xmm6;\n"
-
-                "0:\n "
-                // load the 'b' part into %1 and update pointer
-                "movddup   (%1), %%xmm0; add %3,%1;\n"
-                // begin i-tile
-                "movapd    (%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm2;\n"
-                "movapd  16(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm3;\n"
-                "movapd  32(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm4;\n"
-                "movapd  48(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm5;\n"
-                "movapd  64(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm6; add %2,%0; \n"
-                "sub $1,%4; jnz 0b;\n"
-
-                "movapd   %%xmm2, (%5); add %6,%5;\n"
-                "movapd   %%xmm3, (%5); add %6,%5;\n"
-                "movapd   %%xmm4, (%5); add %6,%5;\n"
-                "movapd   %%xmm5, (%5); add %6,%5;\n"
-                "movapd   %%xmm6, (%5);\n"
-
-                "pop %5; pop %4; pop %1; pop %0;\n"
-
-                :
-                : "r"(a), "r"(b + j), "r"(dimi<<4), "r"(dimj<<3), "r"(dimk), "r"(c + j), "r"(dimj<<4)
-                :
-            );
-          }
-        }
-        else if (ni == 6)
-        {
-          for (long j = 0; j < dimj; ++j)
-          {
-            __asm__ volatile
-            (
-                // save registers to be 'clobbered'
-                "push %0; push %1; push %4; push %5;\n "
-                // zero out mmx registers
-                "pxor %%xmm2,%%xmm2;\n"
-                "pxor %%xmm3,%%xmm3;\n"
-                "pxor %%xmm4,%%xmm4;\n"
-                "pxor %%xmm5,%%xmm5;\n"
-                "pxor %%xmm6,%%xmm6;\n"
-                "pxor %%xmm7,%%xmm7;\n"
-
-                "0:\n "
-                // load the 'b' part into %1 and update pointer
-                "movddup   (%1), %%xmm0; add %3,%1;\n"
-                // begin i-tile
-                "movapd    (%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm2;\n"
-                "movapd  16(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm3;\n"
-                "movapd  32(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm4;\n"
-                "movapd  48(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm5;\n"
-                "movapd  64(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm6;\n"
-                "movapd  80(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm7; add %2,%0; \n"
-                "sub $1,%4; jnz 0b;\n"
-
-                "movapd   %%xmm2, (%5); add %6,%5;\n"
-                "movapd   %%xmm3, (%5); add %6,%5;\n"
-                "movapd   %%xmm4, (%5); add %6,%5;\n"
-                "movapd   %%xmm5, (%5); add %6,%5;\n"
-                "movapd   %%xmm6, (%5); add %6,%5;\n"
-                "movapd   %%xmm7, (%5); \n"
-
-                "pop %5; pop %4; pop %1; pop %0;\n"
-
-                :
-                : "r"(a), "r"(b + j), "r"(dimi<<4), "r"(dimj<<3), "r"(dimk), "r"(c + j), "r"(dimj<<4)
-                :
-            );
-          }
-        }
-        else if (ni == 7)
-         {
-           for (long j = 0; j < dimj; ++j)
-           {
-             __asm__ volatile
-             (
-               // save registers to be 'clobbered'
-               "push %0; push %1; push %4; push %5;\n "
-               // zero out mmx registers
-               "pxor %%xmm2,%%xmm2;\n"
-               "pxor %%xmm3,%%xmm3;\n"
-               "pxor %%xmm4,%%xmm4;\n"
-               "pxor %%xmm5,%%xmm5;\n"
-               "pxor %%xmm6,%%xmm6;\n"
-               "pxor %%xmm7,%%xmm7;\n"
-               "pxor %%xmm8,%%xmm8;\n"
-
-              "0:\n "
-              // load the 'b' part into %1 and update pointer
-              "movddup   (%1), %%xmm0; add %3,%1;\n"
-              // begin i-tile
-              "movapd    (%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm2;\n"
-              "movapd  16(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm3;\n"
-              "movapd  32(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm4;\n"
-              "movapd  48(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm5;\n"
-              "movapd  64(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm6;\n"
-              "movapd  80(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm7;\n"
-              "movapd  96(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm8; add %2,%0; \n"
-              "sub $1,%4; jnz 0b;\n"
-
-              "movapd   %%xmm2, (%5); add %6,%5;\n"
-              "movapd   %%xmm3, (%5); add %6,%5;\n"
-              "movapd   %%xmm4, (%5); add %6,%5;\n"
-              "movapd   %%xmm5, (%5); add %6,%5;\n"
-              "movapd   %%xmm6, (%5); add %6,%5;\n"
-              "movapd   %%xmm7, (%5); add %6,%5;\n"
-              "movapd   %%xmm8, (%5);\n"
-
-              "pop %5; pop %4; pop %1; pop %0;\n"
-
-              :
-              : "r"(a), "r"(b + j), "r"(dimi<<4), "r"(dimj<<3), "r"(dimk), "r"(c + j), "r"(dimj<<4)
-              :
-             );
-           }
-         }
-       else if (ni == 8)
-        {
-          for (long j = 0; j < dimj; ++j)
-          {
-            __asm__ volatile
-            (
-              // save registers to be 'clobbered'
-              "push %0; push %1; push %4; push %5;\n "
-              // zero out mmx registers
-              "pxor %%xmm2,%%xmm2;\n"
-              "pxor %%xmm3,%%xmm3;\n"
-              "pxor %%xmm4,%%xmm4;\n"
-              "pxor %%xmm5,%%xmm5;\n"
-              "pxor %%xmm6,%%xmm6;\n"
-              "pxor %%xmm7,%%xmm7;\n"
-              "pxor %%xmm8,%%xmm8;\n"
-              "pxor %%xmm9,%%xmm9;\n"
-
-             "0:\n "
-             // load the 'b' part into %1 and update pointer
-             "movddup   (%1), %%xmm0; add %3,%1;\n"
-             // begin i-tile
-             "movapd    (%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm2;\n"
-             "movapd  16(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm3;\n"
-             "movapd  32(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm4;\n"
-             "movapd  48(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm5;\n"
-             "movapd  64(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm6;\n"
-             "movapd  80(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm7;\n"
-             "movapd  96(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm8;\n"
-             "movapd 112(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm9; add %2,%0;\n"
-             "sub $1,%4; jnz 0b;\n"
-
-             "movapd   %%xmm2, (%5); add %6,%5;\n"
-             "movapd   %%xmm3, (%5); add %6,%5;\n"
-             "movapd   %%xmm4, (%5); add %6,%5;\n"
-             "movapd   %%xmm5, (%5); add %6,%5;\n"
-             "movapd   %%xmm6, (%5); add %6,%5;\n"
-             "movapd   %%xmm7, (%5); add %6,%5;\n"
-             "movapd   %%xmm8, (%5); add %6,%5;\n"
-             "movapd   %%xmm9, (%5);\n"
-
-             "pop %5; pop %4; pop %1; pop %0;\n"
-
-             :
-             : "r"(a), "r"(b + j), "r"(dimi<<4), "r"(dimj<<3), "r"(dimk), "r"(c + j), "r"(dimj<<4)
-             :
-            );
-          }
-        }
-        else if (ni == 9)
-        {
-          for (long j = 0; j < dimj; ++j)
-          {
-            __asm__ volatile
-            (
-              // save registers to be 'clobbered'
-              "push %0; push %1; push %4; push %5;\n "
-              // zero out mmx registers
-              "pxor %%xmm2,%%xmm2;\n"
-              "pxor %%xmm3,%%xmm3;\n"
-              "pxor %%xmm4,%%xmm4;\n"
-              "pxor %%xmm5,%%xmm5;\n"
-              "pxor %%xmm6,%%xmm6;\n"
-              "pxor %%xmm7,%%xmm7;\n"
-              "pxor %%xmm8,%%xmm8;\n"
-              "pxor %%xmm9,%%xmm9;\n"
-              "pxor %%xmm10,%%xmm10;\n"
-
-             "0:\n "
-             // load the 'b' part into %1 and update pointer
-             "movddup   (%1), %%xmm0; add %3,%1;\n"
-             // begin i-tile
-             "movapd    (%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm2;\n"
-             "movapd  16(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm3;\n"
-             "movapd  32(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm4;\n"
-             "movapd  48(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm5;\n"
-             "movapd  64(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm6;\n"
-             "movapd  80(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm7;\n"
-             "movapd  96(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm8;\n"
-             "movapd 112(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm9;\n"
-             "movapd 128(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm10; add %2,%0;\n"
-             "sub $1,%4; jnz 0b;\n"
-
-             "movapd   %%xmm2, (%5); add %6,%5;\n"
-             "movapd   %%xmm3, (%5); add %6,%5;\n"
-             "movapd   %%xmm4, (%5); add %6,%5;\n"
-             "movapd   %%xmm5, (%5); add %6,%5;\n"
-             "movapd   %%xmm6, (%5); add %6,%5;\n"
-             "movapd   %%xmm7, (%5); add %6,%5;\n"
-             "movapd   %%xmm8, (%5); add %6,%5;\n"
-             "movapd   %%xmm9, (%5); add %6,%5;\n"
-             "movapd  %%xmm10, (%5);\n"
-
-             "pop %5; pop %4; pop %1; pop %0;\n"
-
-             :
-             : "r"(a), "r"(b + j), "r"(dimi<<4), "r"(dimj<<3), "r"(dimk), "r"(c + j), "r"(dimj<<4)
-             :
-            );
-          }
-        }
-        if (ni == 10)
-        {
-          for (long j = 0; j < dimj; ++j)
-          {
-            __asm__ volatile
-            (
-              // save registers to be 'clobbered'
-              "push %0; push %1; push %4; push %5;\n "
-              // zero out mmx registers
-              "pxor %%xmm2,%%xmm2;\n"
-              "pxor %%xmm3,%%xmm3;\n"
-              "pxor %%xmm4,%%xmm4;\n"
-              "pxor %%xmm5,%%xmm5;\n"
-              "pxor %%xmm6,%%xmm6;\n"
-              "pxor %%xmm7,%%xmm7;\n"
-              "pxor %%xmm8,%%xmm8;\n"
-              "pxor %%xmm9,%%xmm9;\n"
-              "pxor %%xmm10,%%xmm10;\n"
-              "pxor %%xmm11,%%xmm11;\n"
-
-             "0:\n "
-             // load the 'b' part into %1 and update pointer
-             "movddup   (%1), %%xmm0; add %3,%1;\n"
-             // begin i-tile
-             "movapd    (%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm2;\n"
-             "movapd  16(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm3;\n"
-             "movapd  32(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm4;\n"
-             "movapd  48(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm5;\n"
-             "movapd  64(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm6;\n"
-             "movapd  80(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm7;\n"
-             "movapd  96(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm8;\n"
-             "movapd 112(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm9;\n"
-             "movapd 128(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm10;\n"
-             "movapd 144(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm11; add %2,%0;\n"
-             "sub $1,%4; jnz 0b;\n"
-
-             "movapd   %%xmm2, (%5); add %6,%5;\n"
-             "movapd   %%xmm3, (%5); add %6,%5;\n"
-             "movapd   %%xmm4, (%5); add %6,%5;\n"
-             "movapd   %%xmm5, (%5); add %6,%5;\n"
-             "movapd   %%xmm6, (%5); add %6,%5;\n"
-             "movapd   %%xmm7, (%5); add %6,%5;\n"
-             "movapd   %%xmm8, (%5); add %6,%5;\n"
-             "movapd   %%xmm9, (%5); add %6,%5;\n"
-             "movapd  %%xmm10, (%5); add %6,%5;\n"
-             "movapd  %%xmm11, (%5);\n"
-
-             "pop %5; pop %4; pop %1; pop %0;\n"
-
-             :
-             : "r"(a), "r"(b + j), "r"(dimi<<4), "r"(dimj<<3), "r"(dimk), "r"(c + j), "r"(dimj<<4)
-             :
-            );
-          }
-        }
-        else if (ni == 11)
-        {
-          for (long j = 0; j < dimj; ++j)
-          {
-            __asm__ volatile
-            (
-              // save registers to be 'clobbered'
-              "push %0; push %1; push %4; push %5;\n "
-              // zero out mmx registers
-              "pxor %%xmm2,%%xmm2;\n"
-              "pxor %%xmm3,%%xmm3;\n"
-              "pxor %%xmm4,%%xmm4;\n"
-              "pxor %%xmm5,%%xmm5;\n"
-              "pxor %%xmm6,%%xmm6;\n"
-              "pxor %%xmm7,%%xmm7;\n"
-              "pxor %%xmm8,%%xmm8;\n"
-              "pxor %%xmm9,%%xmm9;\n"
-              "pxor %%xmm10,%%xmm10;\n"
-              "pxor %%xmm11,%%xmm11;\n"
-              "pxor %%xmm12,%%xmm12;\n"
-
-             "0:\n "
-             // load the 'b' part into %1 and update pointer
-             "movddup   (%1), %%xmm0; add %3,%1;\n"
-             // begin i-tile
-             "movapd    (%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm2;\n"
-             "movapd  16(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm3;\n"
-             "movapd  32(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm4;\n"
-             "movapd  48(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm5;\n"
-             "movapd  64(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm6;\n"
-             "movapd  80(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm7;\n"
-             "movapd  96(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm8;\n"
-             "movapd 112(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm9;\n"
-             "movapd 128(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm10;\n"
-             "movapd 144(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm11;\n"
-             "movapd 160(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm12; add %2,%0;\n"
-             "sub $1,%4; jnz 0b;\n"
-
-             "movapd   %%xmm2, (%5); add %6,%5;\n"
-             "movapd   %%xmm3, (%5); add %6,%5;\n"
-             "movapd   %%xmm4, (%5); add %6,%5;\n"
-             "movapd   %%xmm5, (%5); add %6,%5;\n"
-             "movapd   %%xmm6, (%5); add %6,%5;\n"
-             "movapd   %%xmm7, (%5); add %6,%5;\n"
-             "movapd   %%xmm8, (%5); add %6,%5;\n"
-             "movapd   %%xmm9, (%5); add %6,%5;\n"
-             "movapd  %%xmm10, (%5); add %6,%5;\n"
-             "movapd  %%xmm11, (%5); add %6,%5;\n"
-             "movapd  %%xmm12, (%5);\n"
-
-             "pop %5; pop %4; pop %1; pop %0;\n"
-
-             :
-             : "r"(a), "r"(b + j), "r"(dimi<<4), "r"(dimj<<3), "r"(dimk), "r"(c + j), "r"(dimj<<4)
-             :
-            );
-          }
-        }
-        else if (ni == 12)
-        {
-          for (long j = 0; j < dimj; ++j)
-          {
-            __asm__ volatile
-            (
-              // save registers to be 'clobbered'
-              "push %0; push %1; push %4; push %5;\n "
-              // zero out mmx registers
-              "pxor %%xmm2,%%xmm2;\n"
-              "pxor %%xmm3,%%xmm3;\n"
-              "pxor %%xmm4,%%xmm4;\n"
-              "pxor %%xmm5,%%xmm5;\n"
-              "pxor %%xmm6,%%xmm6;\n"
-              "pxor %%xmm7,%%xmm7;\n"
-              "pxor %%xmm8,%%xmm8;\n"
-              "pxor %%xmm9,%%xmm9;\n"
-              "pxor %%xmm10,%%xmm10;\n"
-              "pxor %%xmm11,%%xmm11;\n"
-              "pxor %%xmm12,%%xmm12;\n"
-              "pxor %%xmm13,%%xmm13;\n"
-
-             "0:\n "
-             // load the 'b' part into %1 and update pointer
-             "movddup   (%1), %%xmm0; add %3,%1;\n"
-             // begin i-tile
-             "movapd    (%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm2;\n"
-             "movapd  16(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm3;\n"
-             "movapd  32(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm4;\n"
-             "movapd  48(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm5;\n"
-             "movapd  64(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm6;\n"
-             "movapd  80(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm7;\n"
-             "movapd  96(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm8;\n"
-             "movapd 112(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm9;\n"
-             "movapd 128(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm10;\n"
-             "movapd 144(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm11;\n"
-             "movapd 160(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm12;\n"
-             "movapd 176(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm13; add %2,%0;\n"
-             "sub $1,%4; jnz 0b;\n"
-
-             "movapd   %%xmm2, (%5); add %6,%5;\n"
-             "movapd   %%xmm3, (%5); add %6,%5;\n"
-             "movapd   %%xmm4, (%5); add %6,%5;\n"
-             "movapd   %%xmm5, (%5); add %6,%5;\n"
-             "movapd   %%xmm6, (%5); add %6,%5;\n"
-             "movapd   %%xmm7, (%5); add %6,%5;\n"
-             "movapd   %%xmm8, (%5); add %6,%5;\n"
-             "movapd   %%xmm9, (%5); add %6,%5;\n"
-             "movapd  %%xmm10, (%5); add %6,%5;\n"
-             "movapd  %%xmm11, (%5); add %6,%5;\n"
-             "movapd  %%xmm12, (%5); add %6,%5;\n"
-             "movapd  %%xmm13, (%5);\n"
-
-             "pop %5; pop %4; pop %1; pop %0;\n"
-
-             :
-             : "r"(a), "r"(b + j), "r"(dimi<<4), "r"(dimj<<3), "r"(dimk), "r"(c + j), "r"(dimj<<4)
-             :
-            );
-          }
-        }
-        else if (ni == 13)
-        {
-          for (long j = 0; j < dimj; ++j)
-          {
-            __asm__ volatile
-            (
-              // save registers to be 'clobbered'
-              "push %0; push %1; push %4; push %5;\n "
-              // zero out mmx registers
-              "pxor %%xmm2,%%xmm2;\n"
-              "pxor %%xmm3,%%xmm3;\n"
-              "pxor %%xmm4,%%xmm4;\n"
-              "pxor %%xmm5,%%xmm5;\n"
-              "pxor %%xmm6,%%xmm6;\n"
-              "pxor %%xmm7,%%xmm7;\n"
-              "pxor %%xmm8,%%xmm8;\n"
-              "pxor %%xmm9,%%xmm9;\n"
-              "pxor %%xmm10,%%xmm10;\n"
-              "pxor %%xmm11,%%xmm11;\n"
-              "pxor %%xmm12,%%xmm12;\n"
-              "pxor %%xmm13,%%xmm13;\n"
-              "pxor %%xmm14,%%xmm14;\n"
-
-             "0:\n "
-             // load the 'b' part into %1 and update pointer
-             "movddup   (%1), %%xmm0; add %3,%1;\n"
-             // begin i-tile
-             "movapd    (%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm2;\n"
-             "movapd  16(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm3;\n"
-             "movapd  32(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm4;\n"
-             "movapd  48(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm5;\n"
-             "movapd  64(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm6;\n"
-             "movapd  80(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm7;\n"
-             "movapd  96(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm8;\n"
-             "movapd 112(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm9;\n"
-             "movapd 128(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm10;\n"
-             "movapd 144(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm11;\n"
-             "movapd 160(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm12;\n"
-             "movapd 176(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm13;\n"
-             "movapd 192(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm14; add %2,%0;\n"
-             "sub $1,%4; jnz 0b;\n"
-
-             "movapd   %%xmm2, (%5); add %6,%5;\n"
-             "movapd   %%xmm3, (%5); add %6,%5;\n"
-             "movapd   %%xmm4, (%5); add %6,%5;\n"
-             "movapd   %%xmm5, (%5); add %6,%5;\n"
-             "movapd   %%xmm6, (%5); add %6,%5;\n"
-             "movapd   %%xmm7, (%5); add %6,%5;\n"
-             "movapd   %%xmm8, (%5); add %6,%5;\n"
-             "movapd   %%xmm9, (%5); add %6,%5;\n"
-             "movapd  %%xmm10, (%5); add %6,%5;\n"
-             "movapd  %%xmm11, (%5); add %6,%5;\n"
-             "movapd  %%xmm12, (%5); add %6,%5;\n"
-             "movapd  %%xmm13, (%5); add %6,%5;\n"
-             "movapd  %%xmm14, (%5);"
-
-             "pop %5; pop %4; pop %1; pop %0;\n"
-
-             :
-             : "r"(a), "r"(b + j), "r"(dimi<<4), "r"(dimj<<3), "r"(dimk), "r"(c + j), "r"(dimj<<4)
-             :
-            );
-          }
-        }
-        else if (ni == 14)
-        {
-          for (long j = 0; j < dimj; ++j)
-          {
-            __asm__ volatile
-            (
-              // save registers to be 'clobbered'
-              "push %0; push %1; push %4; push %5;\n "
-              // zero out mmx registers
-              "pxor %%xmm2,%%xmm2;\n"
-              "pxor %%xmm3,%%xmm3;\n"
-              "pxor %%xmm4,%%xmm4;\n"
-              "pxor %%xmm5,%%xmm5;\n"
-              "pxor %%xmm6,%%xmm6;\n"
-              "pxor %%xmm7,%%xmm7;\n"
-              "pxor %%xmm8,%%xmm8;\n"
-              "pxor %%xmm9,%%xmm9;\n"
-              "pxor %%xmm10,%%xmm10;\n"
-              "pxor %%xmm11,%%xmm11;\n"
-              "pxor %%xmm12,%%xmm12;\n"
-              "pxor %%xmm13,%%xmm13;\n"
-              "pxor %%xmm14,%%xmm14;\n"
-              "pxor %%xmm15,%%xmm15;\n"
-
-             "0:\n "
-             // load the 'b' part into %1
-             "movddup   (%1), %%xmm0; add %3,%1;\n"
-             // begin i-loop
-             "movapd    (%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm2;\n"
-             "movapd  16(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm3;\n"
-             "movapd  32(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm4;\n"
-             "movapd  48(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm5;\n"
-             "movapd  64(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm6;\n"
-             "movapd  80(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm7;\n"
-             "movapd  96(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm8;\n"
-             "movapd 112(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm9;\n"
-             "movapd 128(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm10;\n"
-             "movapd 144(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm11;\n"
-             "movapd 160(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm12;\n"
-             "movapd 176(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm13;\n"
-             "movapd 192(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm14;\n"
-             "movapd 208(%0), %%xmm1; mulpd %%xmm0, %%xmm1; addpd %%xmm1,%%xmm15; add %2,%0;\n"
-             "sub $1,%4; jnz 0b;\n"
-
-             "movapd   %%xmm2, (%5); add %6,%5;\n"
-             "movapd   %%xmm3, (%5); add %6,%5;\n"
-             "movapd   %%xmm4, (%5); add %6,%5;\n"
-             "movapd   %%xmm5, (%5); add %6,%5;\n"
-             "movapd   %%xmm6, (%5); add %6,%5;\n"
-             "movapd   %%xmm7, (%5); add %6,%5;\n"
-             "movapd   %%xmm8, (%5); add %6,%5;\n"
-             "movapd   %%xmm9, (%5); add %6,%5;\n"
-             "movapd  %%xmm10, (%5); add %6,%5;\n"
-             "movapd  %%xmm11, (%5); add %6,%5;\n"
-             "movapd  %%xmm12, (%5); add %6,%5;\n"
-             "movapd  %%xmm13, (%5); add %6,%5;\n"
-             "movapd  %%xmm14, (%5); add %6,%5;\n"
-             "movapd  %%xmm15, (%5);\n"
-
-             "pop %5; pop %4; pop %1; pop %0;\n"
-
-             :
-             : "r"(a), "r"(b + j), "r"(dimi<<4), "r"(dimj<<3), "r"(dimk), "r"(c + j), "r"(dimj<<4)
-             :
-            );
-          }
-        }
-      }
-    }
-#endif // __INTEL_COMPILER
-}
-#endif // defined(X86_64)  && !defined(DISABLE_SSE3)
 
 
 
